@@ -15,13 +15,38 @@
   These functions are generated with the Thing and added at the end of this sketch.
 */
 
+/*
+Assemble the circuit following the pinout:
+
+Switch common -> +3.3V
+Switch throw A -> 1k -> IN1 (10k -> GND)
+Switch throw B -> 1k -> IN2 (10k -> GND)
+
+Button C -> +3.3V
+Button NO -> 1k -> IN1 (shared node)
+Button NO -> BUTTON_PIN (Arduino pin, direct)
+Button NO / IN1 -> 10k -> GND
+
+L293D:
+  Pin8 (Vcc2) -> +6V
+  Pin16 (Vcc1) -> +5V recommended
+  Pin1 (EN1) -> D4 (Arduino PWM)
+  OUT1 -> Motor A
+  OUT2 -> Motor B
+GNDs tied: Arduino GND, L293D GNDs, motor supply GND
+*/
+
 #include "thingProperties.h"
 
 // Motor pins
+const int BUTTON_PIN  = 5;  // Button Pin state read
 const int EN1  = 4;  // Enable pin (PWM for speed)
-const int IN1  = 3;  // Control input 1
-const int IN2  = 2;  // Control input 2
+const int IN1_READ_PIN  = 3;  // input 1 state read
+const int IN2_READ_PIN  = 2;  // input 2 state read
 
+bool lastIn1 = LOW;
+bool lastIn2 = LOW;
+bool lastButton = LOW;
 
 void setup() {
   // Initialize serial and wait for port to open:
@@ -52,17 +77,48 @@ void setup() {
 
   // Set motor control pins as outputs
   pinMode(EN1, OUTPUT);
-  pinMode(IN1, OUTPUT);
-  pinMode(IN2, OUTPUT);
+  pinMode(IN1_READ_PIN, INPUT);
+  pinMode(IN2_READ_PIN, INPUT);
+  pinMode(BUTTON_PIN, INPUT);
 
   // Start with motor stopped
-  digitalWrite(IN1, LOW);
-  digitalWrite(IN2, LOW);
   digitalWrite(EN1, LOW);
 }
 
 void loop() {
   ArduinoCloud.update();
+
+  bool in1 = digitalRead(IN1_READ_PIN);
+  bool in2 = digitalRead(IN2_READ_PIN);
+  bool button = digitalRead(BUTTON_PIN);
+
+  // --- Detect switch change ---
+  if (in1 != lastIn1 || in2 != lastIn2) {
+    String direction;
+    if (in1 && !in2) direction = "FORWARD";
+    else if (!in1 && in2) direction = "REVERSE";
+    else if (in1 && in2) direction = "BRAKE (both high)";
+    else direction = "COAST (both low)";
+
+    Serial.print("Switch changed → Direction: ");
+    Serial.println(direction);
+
+    lastIn1 = in1;
+    lastIn2 = in2;
+  }
+
+  // --- Detect button change ---
+  if (button != lastButton) {
+    if (button)
+      Serial.println("Stop Button released");
+    else
+      Serial.println("Stop Button pressed");
+
+    lastButton = button;
+  }
+
+  delay(50);  // Small debounce delay
+  
 }
 
 
@@ -92,15 +148,15 @@ void onColorPickerChange() {
 */
 void onMotorForwardChange()  {
   // Add your code here to act upon MotorForward change
-  if (motor_forward) {
-    Serial.println("Motor Forwards");
-    digitalWrite(IN1, HIGH);
-    digitalWrite(IN2, LOW);
-  } else {
-    Serial.println("Motor Backwards");
-    digitalWrite(IN1, LOW);
-    digitalWrite(IN2, HIGH);
-  }
+  // if (motor_forward) {
+  //   Serial.println("Motor Forwards");
+  //   digitalWrite(IN1, HIGH);
+  //   digitalWrite(IN2, LOW);
+  // } else {
+  //   Serial.println("Motor Backwards");
+  //   digitalWrite(IN1, LOW);
+  //   digitalWrite(IN2, HIGH);
+  // }
 }
 
 /*
@@ -116,7 +172,5 @@ void onMotorOnChange()  {
   } else {
     Serial.println("Motor Off");
     analogWrite(EN1, LOW); // Stop
-    digitalWrite(IN1, LOW);
-    digitalWrite(IN2, LOW);
   }
 }
