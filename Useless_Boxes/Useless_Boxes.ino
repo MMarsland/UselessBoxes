@@ -7,52 +7,30 @@
   The following variables are automatically generated and updated when changes are made to the Thing
 
   CloudColor color_picker;
+  bool button_pressed;
+  bool motor_enabled;
   bool motor_forward;
-  bool motor_on;
+  bool switch_forward;
 
   Variables which are marked as READ/WRITE in the Cloud Thing will also have functions
   which are called when their values are changed from the Dashboard.
   These functions are generated with the Thing and added at the end of this sketch.
 */
 
-/*
-Assemble the circuit following the pinout:
-
-Switch common -> +3.3V
-Switch throw A -> 1k -> IN1 (10k -> GND)
-Switch throw B -> 1k -> IN2 (10k -> GND)
-
-Button C -> +3.3V
-Button NO -> 1k -> IN1 (shared node)
-Button NO -> BUTTON_PIN (Arduino pin, direct)
-Button NO / IN1 -> 10k -> GND
-
-L293D:
-  Pin8 (Vcc2) -> +6V
-  Pin16 (Vcc1) -> +5V recommended
-  Pin1 (EN1) -> D4 (Arduino PWM)
-  OUT1 -> Motor A
-  OUT2 -> Motor B
-GNDs tied: Arduino GND, L293D GNDs, motor supply GND
-*/
-
 #include "thingProperties.h"
 
-// Motor pins
-const int BUTTON_PIN  = 5;  // Button Pin state read
-const int EN1  = 4;  // Enable pin (PWM for speed)
-const int IN1_READ_PIN  = 3;  // input 1 state read
-const int IN2_READ_PIN  = 2;  // input 2 state read
-
-bool lastIn1 = LOW;
-bool lastIn2 = LOW;
-bool lastButton = LOW;
+// ===== Pin assignments =====
+const int IN1 = 2;           // Motor direction A
+const int IN2 = 3;           // Motor direction B
+const int EN1 = 4;           // Motor enable (PWM capable)
+const int SWITCH_PIN = 6;    // SPDT switch
+const int BUTTON_PIN = 7;    // Stop button
 
 void setup() {
   // Initialize serial and wait for port to open:
   Serial.begin(9600);
   // This delay gives the chance to wait for a Serial Monitor without blocking if none is found
-  delay(1500); 
+  delay(200); 
 
   // Defined in thingProperties.h
   initProperties();
@@ -70,55 +48,86 @@ void setup() {
   setDebugMessageLevel(2);
   ArduinoCloud.printDebugInfo();
 
-  // set the digital pins as outputs
+
+
+  // Set the LED as outputs
   pinMode(LED_RED, OUTPUT);
   pinMode(LED_BLUE, OUTPUT);
   pinMode(LED_GREEN, OUTPUT);
 
-  // Set motor control pins as outputs
+  // Motor pins
+  pinMode(IN1, OUTPUT);
+  pinMode(IN2, OUTPUT);
   pinMode(EN1, OUTPUT);
-  pinMode(IN1_READ_PIN, INPUT);
-  pinMode(IN2_READ_PIN, INPUT);
-  pinMode(BUTTON_PIN, INPUT);
 
-  // Start with motor stopped
-  digitalWrite(EN1, LOW);
+  // Inputs with internal pull-ups
+  pinMode(SWITCH_PIN, INPUT_PULLUP);
+  pinMode(BUTTON_PIN, INPUT_PULLUP);
+
+  // Set starting state
+  switch_forward = digitalRead(SWITCH_PIN);
+  button_pressed = digitalRead(BUTTON_PIN); 
+  modifyMotorState(switch_forward, button_pressed);
+
+  Serial.println("System Initialized.");
 }
 
 void loop() {
   ArduinoCloud.update();
 
-  bool in1 = digitalRead(IN1_READ_PIN);
-  bool in2 = digitalRead(IN2_READ_PIN);
-  bool button = digitalRead(BUTTON_PIN);
+  // Read inputs
+  bool switchState = digitalRead(SWITCH_PIN);
+  bool buttonState = digitalRead(BUTTON_PIN); 
 
-  // --- Detect switch change ---
-  if (in1 != lastIn1 || in2 != lastIn2) {
-    String direction;
-    if (in1 && !in2) direction = "FORWARD";
-    else if (!in1 && in2) direction = "REVERSE";
-    else if (in1 && in2) direction = "BRAKE (both high)";
-    else direction = "COAST (both low)";
+  bool stateChanged = false;
 
-    Serial.print("Switch changed → Direction: ");
-    Serial.println(direction);
-
-    lastIn1 = in1;
-    lastIn2 = in2;
+  // Detect switch changes
+  if (switchState != switch_forward) {
+    Serial.print("Switch changed to: ");
+    Serial.println(switchState == HIGH ? "FORWARD" : "REVERSE");
+    switch_forward = switchState;
+    stateChanged = true;
   }
 
-  // --- Detect button change ---
-  if (button != lastButton) {
-    if (button)
-      Serial.println("Stop Button released");
-    else
-      Serial.println("Stop Button pressed");
-
-    lastButton = button;
+  // Detect button changes
+  if (buttonState != button_pressed) {
+    Serial.print("Button changed to: ");
+    Serial.println(buttonState == HIGH ? "PRESSED" : "RELEASED");
+    button_pressed = buttonState;
+    stateChanged = true;
   }
 
-  delay(50);  // Small debounce delay
-  
+  // Only update motor if either input changed
+  if (stateChanged) {
+    modifyMotorState(switchState, buttonState);
+  }
+
+  delay(50); // small delay for stability
+}
+
+void modifyMotorState(bool switchState, bool buttonState) {
+  if (switchState == HIGH) {
+    motor_forward = true;
+    // Forward direction — button ignored
+    digitalWrite(IN1, HIGH);
+    digitalWrite(IN2, LOW);
+    analogWrite(EN1, (motor_enabled ? 255 : 0));
+
+  } else {
+    motor_forward = false;
+    // Reverse direction — check button
+    if (buttonState == HIGH) {
+      // Stop motor in reverse
+      digitalWrite(IN1, LOW);
+      digitalWrite(IN2, LOW);
+      analogWrite(EN1, (motor_enabled ? 255 : 0));
+    } else {
+      // Reverse normally
+      digitalWrite(IN1, LOW);
+      digitalWrite(IN2, HIGH);
+      analogWrite(EN1, (motor_enabled ? 255 : 0));
+    }
+  }
 }
 
 
@@ -160,12 +169,12 @@ void onMotorForwardChange()  {
 }
 
 /*
-  Since MotorOn is READ_WRITE variable, onMotorOnChange() is
+  Since MotorEnabled is READ_WRITE variable, onMotorEnabledChange() is
   executed every time a new value is received from IoT Cloud.
 */
-void onMotorOnChange()  {
+void onMotorEnabledChange()  {
   // Add your code here to act upon MotorOn change
-  if (motor_on) {
+  if (motor_enabled) {
     Serial.println("Motor On");
     analogWrite(EN1, 255); // Full speed
     onMotorForwardChange();
@@ -173,4 +182,20 @@ void onMotorOnChange()  {
     Serial.println("Motor Off");
     analogWrite(EN1, LOW); // Stop
   }
+}
+
+/*
+  Since SwitchForward is READ_WRITE variable, onSwitchForwardChange() is
+  executed every time a new value is received from IoT Cloud.
+*/
+void onSwitchForwardChange()  {
+  // Add your code here to act upon SwitchForward change
+}
+
+/*
+  Since ButtonPressed is READ_WRITE variable, onButtonPressedChange() is
+  executed every time a new value is received from IoT Cloud.
+*/
+void onButtonPressedChange()  {
+  // Add your code here to act upon ButtonPressed change
 }

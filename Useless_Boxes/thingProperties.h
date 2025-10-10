@@ -10,17 +10,26 @@ const char PASS[]               = SECRET_OPTIONAL_PASS;    // Network password (
 const char DEVICE_KEY[]  = SECRET_DEVICE_KEY;    // Secret device password
 
 void onColorPickerChange();
-void onSwitchOnChange();
+void onButtonPressedChange();
+void onMotorEnabledChange();
+void onMotorForwardChange();
+void onSwitchForwardChange();
 
 CloudColor color_picker;
-bool switch_on;
+bool button_pressed;
+bool motor_enabled;
+bool motor_forward;
+bool switch_forward;
 
 void initProperties(){
 
   ArduinoCloud.setBoardId(DEVICE_LOGIN_NAME);
   ArduinoCloud.setSecretDeviceKey(DEVICE_KEY);
   ArduinoCloud.addProperty(color_picker, READWRITE, ON_CHANGE, onColorPickerChange);
-  ArduinoCloud.addProperty(switch_on, READWRITE, ON_CHANGE, onSwitchOnChange);
+  ArduinoCloud.addProperty(button_pressed, READWRITE, ON_CHANGE, onButtonPressedChange);
+  ArduinoCloud.addProperty(motor_enabled, READWRITE, ON_CHANGE, onMotorEnabledChange);
+  ArduinoCloud.addProperty(motor_forward, READWRITE, ON_CHANGE, onMotorForwardChange);
+  ArduinoCloud.addProperty(switch_forward, READWRITE, ON_CHANGE, onSwitchForwardChange);
 
 }
 
