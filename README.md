@@ -125,5 +125,111 @@ Email: mmarsland@mac.com
 ## 📝 Bill of Materials (BOM) (TODO)
 
 | ID  | Part name      | Part number | Quantity |
-|-----|----------------|-------=-----|----------|
+|-----|----------------|-------------|----------|
 |     |                |             |          |
+
+---
+
+## 🛣️ Project Roadmap
+
+A step-by-step roadmap to finish the UselessBoxes project, from platform selection to final hardware.
+
+### 🖥️ SOFTWARE  
+
+#### Decide on the Interconnection Platform
+- Evaluate options:
+  - Arduino Cloud
+  - Thinger.io
+  - Your own website with custom backend
+- Consider:
+  - Free tier limitations
+  - Data synchronization capabilities
+  - Ease of integration with Arduino Nano ESP32
+
+#### Choose a Frontend Dashboard Library
+- If using your own website, select a library for real-time dashboards:
+  - Examples: Chart.js, D3.js, React + Recharts, or Vue + ECharts
+- Ensure compatibility with live updates and WebSocket or REST API communication
+
+#### Plan Website Architecture (Assuming Website)
+- Define:
+  - Backend (Node.js / Express / Firebase Functions)
+  - Database (Cloud Firestore, MySQL, or PostgreSQL)
+  - Frontend (Dashboard, user interface)
+  - API endpoints for Arduino devices
+  - Authentication flow (Firebase Auth, JWT tokens)
+
+#### Set Up Device Communication
+- Establish communication between Arduino Nano ESP32 and website backend
+  - Options: HTTP POST, WebSocket, MQTT (via your own broker)
+- Test sending simple sensor or motor state data
+- Test sending commands / setting updates to the devices
+
+#### Ensure Proper Device Authentication
+- Assign unique device IDs or secrets
+- Implement secure authentication when Arduino connects to your backend
+- Prevent unauthorized devices from sending or receiving data
+
+#### Set Up Database on Website
+- Store device states, logs, and user data
+- Recommended options:
+  - Firebase Firestore for simplicity
+  - MySQL/PostgreSQL if using Node.js backend
+- Define schema for:
+  - Devices
+  - Motor state
+  - Dashboard data
+  - Users
+
+#### Build the Intercommunication Dashboard
+- Display real-time motor status and device states
+- Allow manual control of motors (optional)
+- Include live logs for troubleshooting
+
+#### Add Firebase Authentication for Dashboard Access
+- Restrict dashboard access to yourself and your friend
+- Options:
+  - Email/password login
+  - Google Sign-In
+- Integrate auth into your frontend dashboard
+
+#### Ensure Interdevice Communication and Functionality
+- Test interactions between paired UselessBoxes
+- Verify:
+  - State changes propagate correctly
+  - Motors respond as expected
+  - Dashboard reflects real-time updates
+
+### ⚙️ HARDWARE  
+
+#### Test NeoPixels 
+- Have I bought these yet?...
+- Test connection and control from Arduino
+- Integrate into dashboard if desired
+
+#### Design Hardware
+- Prototype and design 3D printed housing
+- Ensure components can fit and function
+- Make design simple, and practical for desk use
+
+#### Finalize Hardware
+- Secure all components in the box
+- Ensure wiring is neat and safe
+- Test full functionality before duplicating
+
+#### Build the Second Box
+- Replicate hardware and software setup
+- Connect to the same platform
+- Test intercommunication between the two boxes
+
+#### Deployment Features 
+- Setup Over-The-Air updates so the software can be modified
+- Setup wifi connection process so that devices can be easily set up
+
+##### ✅ Notes
+- Iteratively test hardware and software at each stage
+- Prioritize secure authentication and device identification
+- Document wiring, code, and backend API endpoints for reproducibility
+
+
+
