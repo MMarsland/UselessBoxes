@@ -146,52 +146,59 @@ A step-by-step roadmap to finish the UselessBoxes project, from platform selecti
   - Data synchronization capabilities
   - Ease of integration with Arduino Nano ESP32
 
-#### Choose a Frontend Dashboard Library
-- If using your own website, select a library for real-time dashboards:
-  - Examples: Chart.js, D3.js, React + Recharts, or Vue + ECharts
-- Ensure compatibility with live updates and WebSocket or REST API communication
+**Decided to stick with Arduino Cloud for V1**
+It will highly simplify the steps required to get a functioning system running.
+And it will be free for up to two devices and 5 variables per device.
+This should be enough to control the motors and even a few settings.
+I can also determine a way to adjust settings on the device (A button perhaps and detailed procedures).
+I can upgrade from Arduino Cloud to a different free option in the future such as using my website in V2.
 
-#### Plan Website Architecture (Assuming Website)
-- Define:
-  - Backend (Node.js / Express / Firebase Functions)
-  - Database (Cloud Firestore, MySQL, or PostgreSQL)
-  - Frontend (Dashboard, user interface)
-  - API endpoints for Arduino devices
-  - Authentication flow (Firebase Auth, JWT tokens)
+~~#### Choose a Frontend Dashboard Library~~
+~~- If using your own website, select a library for real-time dashboards:~~
+~~- Examples: Chart.js, D3.js, React + Recharts, or Vue + ECharts~~
+~~- Ensure compatibility with live updates and WebSocket or REST API communication~~
 
-#### Set Up Device Communication
-- Establish communication between Arduino Nano ESP32 and website backend
-  - Options: HTTP POST, WebSocket, MQTT (via your own broker)
-- Test sending simple sensor or motor state data
-- Test sending commands / setting updates to the devices
+~~#### Plan Website Architecture (Assuming Website)~~
+~~- Define:~~
+~~- Backend (Node.js / Express / Firebase Functions)~~
+~~- Database (Cloud Firestore, MySQL, or PostgreSQL)~~
+~~- Frontend (Dashboard, user interface)~~
+~~- API endpoints for Arduino devices~~
+~~- Authentication flow (Firebase Auth, JWT tokens)~~
 
-#### Ensure Proper Device Authentication
-- Assign unique device IDs or secrets
-- Implement secure authentication when Arduino connects to your backend
-- Prevent unauthorized devices from sending or receiving data
+~~#### Set Up Device Communication~~
+~~- Establish communication between Arduino Nano ESP32 and website backend~~
+~~- Options: HTTP POST, WebSocket, MQTT (via your own broker)~~
+~~- Test sending simple sensor or motor state data~~
+~~- Test sending commands / setting updates to the devices~~
 
-#### Set Up Database on Website
-- Store device states, logs, and user data
-- Recommended options:
-  - Firebase Firestore for simplicity
-  - MySQL/PostgreSQL if using Node.js backend
-- Define schema for:
-  - Devices
-  - Motor state
-  - Dashboard data
-  - Users
+~~#### Ensure Proper Device Authentication~~
+~~- Assign unique device IDs or secrets~~
+~~- Implement secure authentication when Arduino connects to your backend~~
+~~- Prevent unauthorized devices from sending or receiving data~~
 
-#### Build the Intercommunication Dashboard
-- Display real-time motor status and device states
-- Allow manual control of motors (optional)
-- Include live logs for troubleshooting
+~~#### Set Up Database on Website~~
+~~- Store device states, logs, and user data~~
+~~- Recommended options:~~
+~~- Firebase Firestore for simplicity~~
+~~- MySQL/PostgreSQL if using Node.js backend~~
+~~- Define schema for:~~
+~~- Devices~~
+~~- Motor state~~
+~~- Dashboard data~~
+~~- Users~~
 
-#### Add Firebase Authentication for Dashboard Access
-- Restrict dashboard access to yourself and your friend
-- Options:
-  - Email/password login
-  - Google Sign-In
-- Integrate auth into your frontend dashboard
+~~#### Build the Intercommunication Dashboard~~
+~~- Display real-time motor status and device states~~
+~~- Allow manual control of motors (optional)~~
+~~- Include live logs for troubleshooting~~
+
+~~#### Add Firebase Authentication for Dashboard Access~~
+~~- Restrict dashboard access to yourself and your friend~~
+~~- Options:~~
+~~- Email/password login~~
+~~- Google Sign-In~~
+~~- Integrate auth into your frontend dashboard~~
 
 #### Ensure Interdevice Communication and Functionality
 - Test interactions between paired UselessBoxes
@@ -202,12 +209,14 @@ A step-by-step roadmap to finish the UselessBoxes project, from platform selecti
 
 ### ⚙️ HARDWARE  
 
-#### Test NeoPixels 
-- Have I bought these yet?...
-- Test connection and control from Arduino
-- Integrate into dashboard if desired
+#### Test NeoPixels
+
+- Just ordered a logic level shifter and I will re-test
+- They seem like they will work once I have the shifter
 
 #### Design Hardware
+
+- Will need to decide on final wiring, how will the wires connect, where/how will the eletronics be seated
 - Prototype and design 3D printed housing
 - Ensure components can fit and function
 - Make design simple, and practical for desk use
