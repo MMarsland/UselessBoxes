@@ -6,11 +6,7 @@
 
   The following variables are automatically generated and updated when changes are made to the Thing
 
-  CloudColor color_picker;
-  bool button_pressed;
-  bool motor_enabled;
-  bool motor_forward;
-  bool switch_forward;
+  String active_box;
 
   Variables which are marked as READ/WRITE in the Cloud Thing will also have functions
   which are called when their values are changed from the Dashboard.
@@ -24,8 +20,58 @@ const int IN1 = 2;           // Motor direction A
 const int IN2 = 3;           // Motor direction B
 const int EN1 = 4;           // Motor enable (PWM capable)
 const int SWITCH_PIN = 6;    // SPDT switch
-const int BUTTON_PIN = 7;    // Stop button
+const int LIMIT_PIN = 7;     // Limit Switch
+const int BUTTON_PIN = 13;   // Settings button
 
+// === SETTINGS BUTTON HANDLER ======================================
+// Adjustable thresholds
+const unsigned long LONG_PRESS_TIME = 1000;   // ms
+const unsigned long DEBOUNCE_TIME   = 50;     // ms
+
+// === MENU SYSTEM VARIABLES ===
+int menuIndex = 0;
+const int totalMenus = 3;
+bool inSubMenu = false;
+
+// SETTINGS
+bool motorAutoMode = false;
+int led_brightness_percentage = 100; // 0–100
+
+// Variables for button tracking
+bool settingsButtonState = HIGH;
+bool lastSettingsButtonState = HIGH;
+
+unsigned long pressedTime = 0;
+unsigned long releasedTime = 0;
+
+bool longPressActive = false;
+unsigned long lastDebounceTime = 0;
+
+int shortPressCount = 0;
+int longPressCount  = 0;
+
+// Keep track of previous press counts
+int lastShortPressCount = 0;
+int lastLongPressCount  = 0;
+
+// Inactivity timeout
+const unsigned long MENU_TIMEOUT_MS = 5000;
+unsigned long lastInteractionTime = 0;  // resets every button press
+
+bool led_on = false;
+
+// === MOTOR CONTROL HANDLER ========================================
+unsigned long lastMotorUpdate = 0;
+const unsigned long MOTOR_UPDATE_INTERVAL = 50; // ms
+
+bool switch_forward = true;
+bool button_pressed = false;
+bool motor_forward = true;
+bool motor_enabled = true;
+
+// ==================================================================
+// === SETUP ========================================================
+// ==================================================================
 void setup() {
   // Initialize serial and wait for port to open:
   Serial.begin(9600);
@@ -62,26 +108,205 @@ void setup() {
 
   // Inputs with internal pull-ups
   pinMode(SWITCH_PIN, INPUT_PULLUP);
-  pinMode(BUTTON_PIN, INPUT_PULLUP);
+  pinMode(LIMIT_PIN, INPUT_PULLUP);
 
   // Set starting state
   switch_forward = digitalRead(SWITCH_PIN);
-  button_pressed = digitalRead(BUTTON_PIN); 
+  button_pressed = digitalRead(LIMIT_PIN); 
   modifyMotorState(switch_forward, button_pressed);
 
+  // Settings button
+  pinMode(BUTTON_PIN, INPUT_PULLUP);
+
+  // Reflect starting state
+  onActiveBoxChange();
   Serial.println("System Initialized.");
 }
 
+// ==================================================================
+// === MAIN LOOP ====================================================
+// ==================================================================
 void loop() {
-  ArduinoCloud.update();
+    ArduinoCloud.update();
+    handleSettingsButton();   // independent from motor
+  
+    // Run motor control every 50 ms (non-blocking)
+    if (millis() - lastMotorUpdate >= MOTOR_UPDATE_INTERVAL) {
+      lastMotorUpdate = millis();
+      handleMotorControl();
+    }
 
-  // Read inputs
+    handleSerialMenu();
+}
+
+// ==================================================================
+// === SETTINGS BUTTON HANDLER ======================================
+// ==================================================================
+void handleSettingsButton() {
+  bool reading = digitalRead(BUTTON_PIN);
+
+  // Debounce
+  if (reading != lastSettingsButtonState) {
+    lastDebounceTime = millis();
+  }
+
+  if ((millis() - lastDebounceTime) > DEBOUNCE_TIME) {
+    if (reading != settingsButtonState) {
+      settingsButtonState = reading;
+
+      // Just pressed
+      if (settingsButtonState == LOW) {
+        pressedTime = millis();
+        longPressActive = false;
+      }
+
+      // Just released
+      else {
+        unsigned long pressDuration = millis() - pressedTime;
+        if (pressDuration < LONG_PRESS_TIME && !longPressActive) {
+          shortPressCount++;
+          Serial.print("Short press #");
+          Serial.println(shortPressCount);
+        }
+      }
+    }
+  }
+
+  // Detect long press
+  if (settingsButtonState == LOW && !longPressActive && 
+      (millis() - pressedTime > LONG_PRESS_TIME)) {
+    longPressActive = true;
+    longPressCount++;
+    Serial.print("Long press #");
+    Serial.println(longPressCount);
+  }
+
+  lastSettingsButtonState = reading;
+}
+
+// ==================================================================
+// === SETTINGS MENU FUNCTIONS ======================================
+// ==================================================================
+void handleSerialMenu() {
+  unsigned long now = millis();
+
+  // Reset to main menu if inactive too long
+  if ((now - lastInteractionTime) > MENU_TIMEOUT_MS && (menuIndex != 0 || inSubMenu)) {
+    Serial.println("\n⏱️ Menu timed out — returning to main screen.\n");
+    menuIndex = 0;
+    inSubMenu = false;
+    showMenu();
+  }
+  
+  // Handle short press → next menu item
+  if (shortPressCount > lastShortPressCount) {
+    lastShortPressCount = shortPressCount;
+    lastInteractionTime = now;  // activity detected
+
+    if (!inSubMenu) {
+      menuIndex = (menuIndex + 1) % totalMenus;
+      showMenu();
+    } else {
+      adjustSubMenu();
+    }
+  }
+
+  // Handle long press → enter/confirm
+  if (longPressCount > lastLongPressCount) {
+    lastLongPressCount = longPressCount;
+    lastInteractionTime = now;  // activity detected
+
+    if (!inSubMenu) {
+      inSubMenu = true;
+      enterSubMenu();
+    } else {
+      inSubMenu = false;
+      Serial.println("✅ Saved and returned to main menu.");
+      showMenu();
+    }
+  }
+}
+
+// --- MENU DISPLAY ---
+void showMenu() {
+  Serial.println();
+  Serial.print("> Setting ");
+  Serial.print(menuIndex + 1);
+  Serial.print(": ");
+
+  switch (menuIndex) {
+    case 0: Serial.println("Motor Mode"); break;
+    case 1: Serial.println("LED Brightness"); break;
+    case 2: Serial.println("Active Box"); break;
+  }
+}
+
+// --- ENTER SUBMENU ---
+void enterSubMenu() {
+  Serial.print("⚙️ Editing ");
+  switch (menuIndex) {
+    case 0: Serial.println("Motor Mode"); showMotorMode(); break;
+    case 1: Serial.println("LED Brightness"); showBrightness(); break;
+    case 2: Serial.println("Active Box"); showActiveBox(); break;
+  }
+}
+
+// --- ADJUST VALUE ON SHORT PRESS ---
+void adjustSubMenu() {
+  switch (menuIndex) {
+    case 0:
+      motorAutoMode = !motorAutoMode;
+      showMotorMode();
+      break;
+
+    case 1:
+      led_brightness_percentage += 10;
+      if (led_brightness_percentage > 100) led_brightness_percentage = 0;
+      showBrightness();
+      adjustLED();
+      break;
+
+    case 2:
+      setActiveBox(active_box == "TREVOR" ? "MICHAEL" : "TREVOR");
+      showActiveBox();
+      break;
+  }
+}
+
+// --- DISPLAY HELPERS ---
+void showMotorMode() {
+  Serial.print("Motor Mode: ");
+  Serial.println(motorAutoMode ? "AUTO" : "MANUAL");
+}
+
+void showBrightness() {
+  Serial.print("LED Brightness: ");
+  Serial.print(led_brightness_percentage);
+  Serial.println("%");
+}
+
+void showActiveBox() {
+  Serial.print("Active Box: ");
+  Serial.println(active_box);
+}
+
+
+
+
+
+
+
+
+
+// ==================================================================
+// === MOTOR CONTROL HANDLER ========================================
+// ==================================================================
+void handleMotorControl() {
   bool switchState = digitalRead(SWITCH_PIN);
-  bool buttonState = digitalRead(BUTTON_PIN); 
+  bool buttonState = digitalRead(LIMIT_PIN); // same physical button or another?
 
   bool stateChanged = false;
 
-  // Detect switch changes
   if (switchState != switch_forward) {
     Serial.print("Switch changed to: ");
     Serial.println(switchState == HIGH ? "FORWARD" : "REVERSE");
@@ -89,22 +314,21 @@ void loop() {
     stateChanged = true;
   }
 
-  // Detect button changes
   if (buttonState != button_pressed) {
     Serial.print("Button changed to: ");
-    Serial.println(buttonState == HIGH ? "PRESSED" : "RELEASED");
+    Serial.println(buttonState == LOW ? "PRESSED" : "RELEASED");
     button_pressed = buttonState;
     stateChanged = true;
   }
 
-  // Only update motor if either input changed
   if (stateChanged) {
     modifyMotorState(switchState, buttonState);
   }
-
-  delay(50); // small delay for stability
 }
 
+// ==================================================================
+// === MOTOR BEHAVIOR ===============================================
+// ==================================================================
 void modifyMotorState(bool switchState, bool buttonState) {
   if (switchState == HIGH) {
     motor_forward = true;
@@ -131,71 +355,41 @@ void modifyMotorState(bool switchState, bool buttonState) {
 }
 
 
-void onColorPickerChange() {
-  Serial.println("Color changed!");
-
-  // Create a Color object from the cloud variable
-  Color currentColor = Color(color_picker.getValue().hue, 
-                             color_picker.getValue().sat, 
-                             color_picker.getValue().bri);
-
-    // Use the built-in getRGB() method
-  uint8_t red, green, blue;
-  currentColor.getRGB(red, green, blue);
-
-  Serial.printf("Color Changed to (%d, %d, %d)\n", red, green, blue);
-
-  // Write to pins (ACTIVE-LOW RGB LED)
-  analogWrite(LED_RED, 255-red);
-  analogWrite(LED_GREEN, 255-green);
-  analogWrite(LED_BLUE, 255-blue);
-}
-
-/*
-  Since MotorForward is READ_WRITE variable, onMotorForwardChange() is
-  executed every time a new value is received from IoT Cloud.
-*/
-void onMotorForwardChange()  {
-  // Add your code here to act upon MotorForward change
-  // if (motor_forward) {
-  //   Serial.println("Motor Forwards");
-  //   digitalWrite(IN1, HIGH);
-  //   digitalWrite(IN2, LOW);
-  // } else {
-  //   Serial.println("Motor Backwards");
-  //   digitalWrite(IN1, LOW);
-  //   digitalWrite(IN2, HIGH);
-  // }
-}
-
-/*
-  Since MotorEnabled is READ_WRITE variable, onMotorEnabledChange() is
-  executed every time a new value is received from IoT Cloud.
-*/
-void onMotorEnabledChange()  {
-  // Add your code here to act upon MotorOn change
-  if (motor_enabled) {
-    Serial.println("Motor On");
-    analogWrite(EN1, 255); // Full speed
-    onMotorForwardChange();
+// ==================================================================
+// === LED CONTROL ==================================================
+// ==================================================================
+void adjustLED() {
+  if (led_on) {
+    analogWrite(LED_RED, 255-255*led_brightness_percentage/100);
+    analogWrite(LED_GREEN, 255-255*led_brightness_percentage/100);
+    analogWrite(LED_BLUE, 255-255*led_brightness_percentage/100);
   } else {
-    Serial.println("Motor Off");
-    analogWrite(EN1, LOW); // Stop
+    analogWrite(LED_RED,  255-0);
+    analogWrite(LED_GREEN, 255-0);
+    analogWrite(LED_BLUE, 255-0);
   }
 }
 
-/*
-  Since SwitchForward is READ_WRITE variable, onSwitchForwardChange() is
-  executed every time a new value is received from IoT Cloud.
-*/
-void onSwitchForwardChange()  {
-  // Add your code here to act upon SwitchForward change
+void setActiveBox(String box) {
+  active_box = box;
+  onActiveBoxChange();
 }
 
 /*
-  Since ButtonPressed is READ_WRITE variable, onButtonPressedChange() is
+  Since ActiveBox is READ_WRITE variable, onActiveBoxChange() is
   executed every time a new value is received from IoT Cloud.
 */
-void onButtonPressedChange()  {
-  // Add your code here to act upon ButtonPressed change
+void onActiveBoxChange()  {
+  Serial.print("Active Box Changed to: ");
+  Serial.println(active_box);
+  // Add your code here to act upon ActiveBox change
+  if (active_box == BOX_NAME) {
+    Serial.println("Lighting LED");
+    led_on = true;
+    adjustLED();
+  } else {
+    Serial.println("LED OFF");
+    led_on = false;
+    adjustLED();
+  }
 }

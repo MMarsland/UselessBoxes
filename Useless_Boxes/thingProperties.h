@@ -5,31 +5,21 @@
 
 const char DEVICE_LOGIN_NAME[]  = "550183ea-c36f-4b2c-bdec-60b3023f3c77";
 
+const String BOX_NAME = SECRET_BOX_NAME;
+
 const char SSID[]               = SECRET_SSID;    // Network SSID (name)
 const char PASS[]               = SECRET_OPTIONAL_PASS;    // Network password (use for WPA, or use as key for WEP)
 const char DEVICE_KEY[]  = SECRET_DEVICE_KEY;    // Secret device password
 
-void onColorPickerChange();
-void onButtonPressedChange();
-void onMotorEnabledChange();
-void onMotorForwardChange();
-void onSwitchForwardChange();
+void onActiveBoxChange();
 
-CloudColor color_picker;
-bool button_pressed;
-bool motor_enabled;
-bool motor_forward;
-bool switch_forward;
+String active_box;
 
 void initProperties(){
 
   ArduinoCloud.setBoardId(DEVICE_LOGIN_NAME);
   ArduinoCloud.setSecretDeviceKey(DEVICE_KEY);
-  ArduinoCloud.addProperty(color_picker, READWRITE, ON_CHANGE, onColorPickerChange);
-  ArduinoCloud.addProperty(button_pressed, READWRITE, ON_CHANGE, onButtonPressedChange);
-  ArduinoCloud.addProperty(motor_enabled, READWRITE, ON_CHANGE, onMotorEnabledChange);
-  ArduinoCloud.addProperty(motor_forward, READWRITE, ON_CHANGE, onMotorForwardChange);
-  ArduinoCloud.addProperty(switch_forward, READWRITE, ON_CHANGE, onSwitchForwardChange);
+  ArduinoCloud.addProperty(active_box, READWRITE, ON_CHANGE, onActiveBoxChange);
 
 }
 
