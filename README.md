@@ -12,17 +12,31 @@ A design for paired **UselessBoxes** that can be owned separately and used to in
 
 ## 📅 Project Info
 
-- **Author:** Michael Marsland  
-- **Email:** mmarsland@mac.com  
-- **Date:** 10/10/2025  
-- **Revision:** 10/10/2025 - Alpha Dev  
+- **Author:** Michael Marsland
+- **Email:** mmarsland@mac.com
+- **Date:** 10/10/2025
+- **Revision:** 10/10/2025 - Alpha Dev
 - **License:** Proprietary
+
+**Project Description:**
+
+The Useful Box project started a few years ago when my friend Trevor Johns gifted me a "Useless Box" for my birthday. A "Useless Box" is simply a small electro-mechanical device that sits on your desk and has a single switch on top. Upon flicking the switch, a small arm rises from the box to de-activate the switch, and then the cycle repeats.
+
+This gift inspired the idea for a small IoT project where I could build Trevor and I each a similarly "Useless Box" for our desks except with the main change being, my switch would activate his arm to flick his switch off, and him turning his switch on would activate the arm on my box to turn my switch off.
+
+Of course, I also took the opportunity to improve on the design of the box, adding LEDs, buzzers, settings buttons, and a sleeker look to make us the perfect desktop interactive toys. So while we're busy working on our other projects be it for work or personal interest, Trevor and I will be able to maintain our connection across the internet and still get on each others nerves even though we don't live in the same city anymore.
+
+This project has been in the works for quite a while now and it is now in the late stages of assembly as I prepare to have it ready for his birthday this year (End of December).
+
+I would like to see this project grow after the development of this first prototype so Trevor and I may collaborate on more iterations and maybe even add some of our other friends and create a larger interconnected network of slightly less useless "Useless Boxes" to all bother each other at once!
+
+Let me know what you think and stay tuned for more updates!
 
 ---
 
 ## 🛠 Step 1: Installation
 
-Currently using **Arduino Cloud** to set up the device as a "Thing" and a dashboard to control and monitor the variables.  
+Currently using **Arduino Cloud** to set up the device as a "Thing" and a dashboard to control and monitor the variables.
 
 ---
 
@@ -41,56 +55,80 @@ Currently using **Arduino Cloud** to set up the device as a "Thing" and a dashbo
 
 ### ⚙️ Wiring Connections
 
-#### 🧠 Arduino Nano ESP32
+## Useless Box Wiring Connections
 
-| Pin  | Connected To                                        | Purpose |
-|------|-----------------------------------------------------|---------|
-| D2   | H-Bridge IN1                                        | Motor direction control A |
-| D3   | H-Bridge IN2                                        | Motor direction control B |
-| D4   | H-Bridge EN1                                        | Motor enable / PWM speed control |
-| D5   | —                                                   | Unused (kept as a spacer between outputs and inputs) |
-| D6   | Switch Throw A & 10kΩ Pull-down resistor to GND     | Reads switch position (forward/reverse) |
-| D7   | Button NO terminal & 10kΩ Pull-down resistor to GND | Reads button press (stop signal) |
-| 3V3  | —                                                   | Not used for inputs (external pull-down resistors used) |
-| GND  | Common Ground                                       | Common ground for all components |
+## 🧠 Arduino Nano ESP32
 
-#### 🐜 L293DNE (H-Bridge)
+| Pin     | Connected To                                            | Purpose / Notes                          |
+| ------- | ------------------------------------------------------- | ---------------------------------------- |
+| **D2**  | L293D **Pin 2 (IN1)**                                   | Motor direction control A (digital OUT). |
+| **D3**  | L293D **Pin 7 (IN2)**                                   | Motor direction control B (digital OUT). |
+| **D4**  | L293D **Pin 1 (EN1)**                                   | Motor enable / PWM speed control.        |
+| **D5**  | RGB LED **Blue** → 220Ω → LED **B Pin**                 | Blue channel (PWM).                      |
+| **D6**  | RGB LED **Green** → 220Ω → LED **G Pin**                | Green channel (PWM).                     |
+| **D7**  | RGB LED **Red** → 220Ω → LED **R Pin**                  | Red channel (PWM).                       |
+| **D8**  | SPDT Switch **Throw A**                                 | Reads switch position (`INPUT_PULLUP`).  |
+| **D9**  | Limit Switch **NC Terminal**                            | Reads limit state (`INPUT_PULLUP`).      |
+| **D10** | Button **NC Terminal**                                  | Reads button press (`INPUT_PULLUP`).     |
+| **D11** | Buzzer **+ Pin**                                        | Buzzer output (tone / PWM).              |
+| **3V3** | —                                                       | Not used.                                |
+| **GND** | All grounds (switches, LED common, buzzer −, L293D GND) | Shared ground.                           |
 
-| L293DNE Pin | Connected To | Description |
-|--------------|--------------|-------------|
-| Pin 1 (EN1)  | Arduino D4   | Motor enable (PWM capable) |
-| Pin 2 (IN1)  | Arduino D2   | Input 1 for motor direction |
-| Pin 7 (IN2)  | Arduino D3   | Input 2 for motor direction |
-| Pin 3 (OUT1) | Motor Terminal 1 | Motor output A |
-| Pin 6 (OUT2) | Motor Terminal 2 | Motor output B |
-| Pin 4, 5, 12, 13 (GND) | Arduino GND / Common Ground | Common ground |
-| Pin 8 (VCC2) | +6V external motor power | Motor supply voltage |
-| Pin 16 (VCC1)| +6V external motor power | Logic power supply for L293DNE |
+## 🐜 L293DNE (H-Bridge)
 
-#### 🔀 SPDT Switch (2-position)
+| L293D Pin            | Function    | Connected To     | Notes              |
+| -------------------- | ----------- | ---------------- | ------------------ |
+| **Pin 1 (EN1)**      | Enable 1    | Arduino **D4**   | PWM motor control  |
+| **Pin 2 (IN1)**      | Input 1     | Arduino **D2**   | Direction A        |
+| **Pin 7 (IN2)**      | Input 2     | Arduino **D3**   | Direction B        |
+| **Pin 3 (OUT1)**     | Motor A     | Motor Terminal 1 | —                  |
+| **Pin 6 (OUT2)**     | Motor B     | Motor Terminal 2 | —                  |
+| **Pin 4, 5, 12, 13** | GND         | Arduino **GND**  | Common ground      |
+| **Pin 8 (VCC2)**     | Motor Power | +6V external     | Motor supply       |
+| **Pin 16 (VCC1)**    | Logic Power | +5V supply       | L293D logic supply |
 
-| Switch Terminal | Connected To | Purpose |
-|-----------------|--------------|---------|
-| Common (C)      | GND          | Pulls the input LOW when connected |
-| Throw A         | Arduino D6   | Reads switch position (forward) |
-| Throw B         | — (leave unconnected) | Arduino infers reverse when D6 reads LOW due to GND connection |
+## 🔀 SPDT Switch (2-position)
 
-**Logic (with `INPUT_PULLUP`):**  
-- **HIGH** → Forward (not connected)  
-- **LOW** → Reverse (connected to GND)  
+| Switch Terminal | Connected To   | Purpose                    |
+| --------------- | -------------- | -------------------------- |
+| **Common (C)**  | GND            | Provides LOW when selected |
+| **Throw A**     | Arduino **D8** | Reads switch state         |
+| **Throw B**     | —              | Unused                     |
 
-#### 🔘 Button (Momentary, C / NC / NO)
+## 🧱 Limit Switch (Momentary)
 
-| Button Terminal | Connected To | Purpose |
-|-----------------|--------------|---------|
-| Common (C)      | GND          | Pulls input LOW when pressed |
-| Normally Open (NO) | —         | Not used |
-| Normally Closed (NC) | Arduino D7 | Reads button press |
-| —               | (Internal pull-up active on D7) | Pull-up used instead of external resistor |
+| Terminal | Connected To                  | Purpose                                    |
+| -------- | ----------------------------- | ------------------------------------------ |
+| **C**    | GND                           | LOW when triggered                         |
+| **NC**   | Arduino **D9** (INPUT_PULLUP) | Default connected → LOW when limit reached |
+| **NO**   | —                             | Not used                                   |
 
-**Logic (with `INPUT_PULLUP`):**  
-- **HIGH** → Button pressed (stop motor)  
-- **LOW** → Button released  
+## 🔘 Button (Momentary)
+
+| Terminal | Connected To                   | Purpose                |
+| -------- | ------------------------------ | ---------------------- |
+| **C**    | GND                            | Pulls LOW when pressed |
+| **NC**   | Arduino **D10** (INPUT_PULLUP) | Reads button press     |
+| **NO**   | —                              | Not used               |
+
+## 🔊 Buzzer
+
+| Buzzer Pin | Connected To    | Purpose             |
+| ---------- | --------------- | ------------------- |
+| **+**      | Arduino **D11** | Output for tone/PWM |
+| **–**      | GND             | —                   |
+
+## 🌈 RGB LED (Common Cathode recommended)
+
+Each color pin requires a **220Ω resistor**.
+
+| LED Pin            | Connected To          | Notes         |
+| ------------------ | --------------------- | ------------- |
+| **R (Red)**        | 220Ω → Arduino **D7** | PWM capable   |
+| **G (Green)**      | 220Ω → Arduino **D6** | PWM capable   |
+| **B (Blue)**       | 220Ω → Arduino **D5** | PWM capable   |
+| **Common Anode** | GND                   | Shared ground |
+
 
 ---
 
@@ -100,33 +138,49 @@ Upload the code contained in this sketch onto your board via Arduino Cloud or Ar
 
 ### 📂 Folder Structure
 
-- [README.md](README.md) — Project README and Instructions (This File)  
-- [.gitignore](.gitignore) — Git Ignore  
-- [sketch.json](sketch.json) — Something to do with Arduino Cloud  
+- [README.md](README.md) — Project README and Instructions (This File)
+- [.gitignore](.gitignore) — Git Ignore
+- [sketch.json](sketch.json) — Something to do with Arduino Cloud
+- [docs/](docs/) — Documentation Folder (Schematics)
 
-- [docs/](docs/) — Documentation Folder (Schematics)  
-  - [UselessBoxes.fzz](docs/UselessBoxes.fzz) — Fritzing Circuit Diagram  
+  - [UselessBoxes.fzz](docs/UselessBoxes.fzz) — Fritzing Circuit Diagram
+- [Useless_Boxes/](Useless_Boxes/) — Arduino sketch folder
 
-- [Useless_Boxes/](Useless_Boxes/) — Arduino sketch folder  
-  - [Useless_Boxes.ino](Useless_Boxes/Useless_Boxes.ino) — Main Arduino file  
-  - [arduino_secrets.h](Useless_Boxes/arduino_secrets.h) — Secrets for the Devices and Arduino Cloud  
+  - [Useless_Boxes.ino](Useless_Boxes/Useless_Boxes.ino) — Main Arduino file
+  - [arduino_secrets.h](Useless_Boxes/arduino_secrets.h) — Secrets for the Devices and Arduino Cloud
   - [thingProperties.h](Useless_Boxes/thingProperties.h) — Properties for Arduino Cloud
 
 ---
 
 ## 🤝 Contributing
-To contribute to this project, please contact:  
 
-**Michael Marsland**  
-Email: mmarsland@mac.com  
+To contribute to this project, please contact:
+
+**Michael Marsland**
+Email: mmarsland@mac.com
 
 ---
 
 ## 📝 Bill of Materials (BOM) (TODO)
 
-| ID  | Part name      | Part number | Quantity |
-|-----|----------------|-------------|----------|
-|     |                |             |          |
+| ID | Part name                                      | Part number | Quantity |
+| -- | ---------------------------------------------- | ----------- | -------- |
+|    | Arduino Nano ESP32                             |             | 1        |
+|    | RGB Led                                        |             | 1        |
+|    | 220 Ohm Resistors                              |             | 3        |
+|    | Piezo Buzzer                                   | XYDZ        | 1        |
+|    | Button                                         |             | 1        |
+|    | Limit Switch                                   |             | 1        |
+|    | SPDT Switch                                    |             | 1        |
+|    | H-Bridge )                                     | L293DE      | 1        |
+|    | Barrel Jack Connector                          |             | 1        |
+|    | Motor, Gear Box, and Armature from Useless Box |             | 1        |
+|    | 6V/0.83A Power Supply                          |             | 1        |
+|    | Wires (Approx 25)                              |             | ~25      |
+|    | M2x6 Bolts & M2 Nuts                           |             | 6        |
+|    |                                                |             |          |
+|    |                                                |             |          |
+|    |                                                |             |          |
 
 ---
 
@@ -134,9 +188,10 @@ Email: mmarsland@mac.com
 
 A step-by-step roadmap to finish the UselessBoxes project, from platform selection to final hardware.
 
-### 🖥️ SOFTWARE  
+### 🖥️ SOFTWARE
 
 #### Decide on the Interconnection Platform
+
 - Evaluate options:
   - Arduino Cloud
   - Thinger.io
@@ -201,13 +256,14 @@ I can upgrade from Arduino Cloud to a different free option in the future such a
 ~~- Integrate auth into your frontend dashboard~~
 
 #### Ensure Interdevice Communication and Functionality
+
 - Test interactions between paired UselessBoxes
 - Verify:
   - State changes propagate correctly
   - Motors respond as expected
   - Dashboard reflects real-time updates
 
-### ⚙️ HARDWARE  
+### ⚙️ HARDWARE
 
 #### Test NeoPixels
 
@@ -222,23 +278,24 @@ I can upgrade from Arduino Cloud to a different free option in the future such a
 - Make design simple, and practical for desk use
 
 #### Finalize Hardware
+
 - Secure all components in the box
 - Ensure wiring is neat and safe
 - Test full functionality before duplicating
 
 #### Build the Second Box
+
 - Replicate hardware and software setup
 - Connect to the same platform
 - Test intercommunication between the two boxes
 
-#### Deployment Features 
+#### Deployment Features
+
 - Setup Over-The-Air updates so the software can be modified
 - Setup wifi connection process so that devices can be easily set up
 
 ##### ✅ Notes
+
 - Iteratively test hardware and software at each stage
 - Prioritize secure authentication and device identification
 - Document wiring, code, and backend API endpoints for reproducibility
-
-
-
