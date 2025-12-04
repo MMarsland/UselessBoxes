@@ -19,9 +19,13 @@
 const int IN1 = 2;           // Motor direction A
 const int IN2 = 3;           // Motor direction B
 const int EN1 = 4;           // Motor enable (PWM capable)
-const int SWITCH_PIN = 6;    // SPDT switch
-const int LIMIT_PIN = 7;     // Limit Switch
-const int BUTTON_PIN = 13;   // Settings button
+const int LED_R = 5;         // LED Red
+const int LED_G = 6;         // LED Green
+const int LED_B = 7;         // LED Blue
+const int SWITCH_PIN = 8;    // SPDT switch
+const int LIMIT_PIN = 9;     // Limit Switch
+const int BUTTON_PIN = 10;   // Settings button
+const int BUZZER_PIN = 11;   // Buzzer
 
 // === SETTINGS BUTTON HANDLER ======================================
 // Adjustable thresholds
