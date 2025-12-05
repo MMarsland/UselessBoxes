@@ -39,9 +39,9 @@ extern unsigned long lastInteractionTime;
 // Menu structure
 struct MenuItem {
   const char* name;
-  void (*onEnter)();
-  void (*onAdjust)();
   void (*onShow)();
+  void (*onAdjust)();
+  void (*onConfirm)();
 };
 extern MenuItem menuItems[];
 
@@ -52,23 +52,23 @@ void showMenu();
 // Individual menu functions
 void showMotorMode();
 void adjustMotorMode();
-void enterMotorMode();
+void confirmMotorMode();
 
 void showBrightness();
 void adjustBrightness();
-void enterBrightness();
+void confirmBrightness();
 
 void showActiveBox();
 void adjustActiveBox();
-void enterActiveBox();
+void confirmActiveBox();
 
 void showRGB();
 void adjustRGB();
-void enterRGB();
+void confirmRGB();
 
 void showBuzzer();
 void adjustBuzzer();
-void enterBuzzer();
+void confirmBuzzer();
 
 // ===== RGB LED CONTROL =====
 enum RGBMode {
@@ -104,14 +104,15 @@ enum BuzzerPattern {
   BUZZER_PATTERN_COUNT
 };
 
-int buzzerPattern = BUZZER_OFF;
+int requestedBuzzerPattern = BUZZER_OFF; // updated by menu immediately
+int activeBuzzerPattern = BUZZER_OFF;    // only updated on "confirm" (long press)
 bool buzzerState = false;           // on/off state for looping patterns
 unsigned long buzzerLast = 0;       // last toggle time
 unsigned int buzzerStep = 0;        // step in sequence
 const unsigned long BUZZER_INTERVAL = 250; // ms
 
 void stopBuzzer();
-void applyBuzzerPattern(int pattern);
+void confirmBuzzerPattern();
 void updateBuzzerAlarm();
 
 

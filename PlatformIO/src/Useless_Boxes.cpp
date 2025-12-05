@@ -58,7 +58,7 @@ int lastShortPressCount = 0;
 int lastLongPressCount  = 0;
 
 // Inactivity timeout
-const unsigned long MENU_TIMEOUT_MS = 5000;
+const unsigned long MENU_TIMEOUT_MS = 30000;
 unsigned long lastInteractionTime = 0;  // resets every button press
 
 bool led_on = false;
@@ -134,6 +134,7 @@ void setup() {
   // Reflect starting state
   onActiveBoxChange();
   Serial.println("System Initialized.");
+  showMenu();
 }
 
 // ==================================================================
@@ -180,8 +181,8 @@ void handleSettingsButton() {
         unsigned long pressDuration = millis() - pressedTime;
         if (pressDuration < LONG_PRESS_TIME && !longPressActive) {
           shortPressCount++;
-          Serial.print("Short press #");
-          Serial.println(shortPressCount);
+          //Serial.print("Short press #");
+          //Serial.println(shortPressCount);
         }
       }
     }
@@ -192,8 +193,8 @@ void handleSettingsButton() {
       (millis() - pressedTime > LONG_PRESS_TIME)) {
     longPressActive = true;
     longPressCount++;
-    Serial.print("Long press #");
-    Serial.println(longPressCount);
+    //Serial.print("Long press #");
+    //Serial.println(longPressCount);
   }
 
   lastSettingsButtonState = reading;
@@ -227,12 +228,12 @@ void handleSettingsButton() {
 // MENU TABLE — ADD NEW MENUS HERE
 // =============================================================
 
-MenuItem menuItems[] = {
-  { "Motor Mode",      enterMotorMode,    adjustMotorMode,    showMotorMode },
-  { "LED Brightness",  enterBrightness,   adjustBrightness,   showBrightness },
-  { "Active Box",      enterActiveBox,    adjustActiveBox,    showActiveBox },
-  { "RGB LED",         enterRGB,          adjustRGB,          showRGB },
-  { "Buzzer Pattern",  enterBuzzer,       adjustBuzzer,       showBuzzer }
+MenuItem menuItems[] = { 
+  { "Motor Mode",      showMotorMode,      adjustMotorMode,      confirmMotorMode },
+  { "LED Brightness",  showBrightness,     adjustBrightness,     confirmBrightness },
+  { "Active Box",      showActiveBox,      adjustActiveBox,      confirmActiveBox },
+  { "RGB LED",         showRGB,            adjustRGB,            confirmRGB },
+  { "Buzzer Pattern",  showBuzzer,         adjustBuzzer,         confirmBuzzer }
 };
 
 int totalMenus = sizeof(menuItems) / sizeof(MenuItem);
@@ -275,9 +276,10 @@ void handleSerialMenu() {
       inSubMenu = true;
       Serial.print("⚙️ Editing ");
       Serial.println(menuItems[menuIndex].name);
-      menuItems[menuIndex].onEnter();
+      menuItems[menuIndex].onShow();
     } else {
       inSubMenu = false;
+      menuItems[menuIndex].onConfirm();
       Serial.println("✅ Saved and returned to main menu.");
       showMenu();
     }
@@ -315,7 +317,7 @@ void adjustMotorMode() {
   motorAutoMode = !motorAutoMode;
   showMotorMode();
 }
-void enterMotorMode() {
+void confirmMotorMode() {
   showMotorMode();
 }
 
@@ -333,7 +335,7 @@ void adjustBrightness() {
   adjustLED();
   showBrightness();
 }
-void enterBrightness() {
+void confirmBrightness() {
   showBrightness();
 }
 
@@ -347,7 +349,7 @@ void adjustActiveBox() {
   setActiveBox(active_box == "TREVOR" ? "MICHAEL" : "TREVOR");
   showActiveBox();
 }
-void enterActiveBox() {
+void confirmActiveBox() {
   showActiveBox();
 }
 
@@ -373,7 +375,7 @@ void adjustRGB() {
   showRGB();
 }
 
-void enterRGB() {
+void confirmRGB() {
   showRGB();
 }
 
@@ -381,7 +383,7 @@ void enterRGB() {
 // ---------------- BUZZER MENU ----------------
 void showBuzzer() {
   Serial.print("Buzzer Pattern: ");
-  switch(buzzerPattern) {
+  switch(requestedBuzzerPattern) {
     case BUZZER_OFF:    Serial.println("OFF"); break;
     case BUZZER_SINGLE: Serial.println("SINGLE"); break;
     case BUZZER_CHIRP:  Serial.println("CHIRP"); break;
@@ -392,12 +394,14 @@ void showBuzzer() {
 }
 
 void adjustBuzzer() {
-  buzzerPattern = (buzzerPattern + 1) % BUZZER_PATTERN_COUNT;
-  applyBuzzerPattern(buzzerPattern);
+  requestedBuzzerPattern = (requestedBuzzerPattern + 1) % BUZZER_PATTERN_COUNT;
   showBuzzer();
 }
 
-void enterBuzzer() {
+
+void confirmBuzzer() {
+  // Confirm selection on long press
+  confirmBuzzerPattern();
   showBuzzer();
 }
 // ==================================================================
@@ -461,25 +465,25 @@ void updateAnimations() {
 // === BUZZER CONTROL ===============================================
 // ==================================================================
 void stopBuzzer() {
-  buzzerPattern = BUZZER_OFF;
-  noTone(BUZZER_PIN);
+  activeBuzzerPattern = BUZZER_OFF;
   buzzerStep = 0;
   buzzerState = false;
+  noTone(BUZZER_PIN);
 }
 
-void applyBuzzerPattern(int pattern) {
-  buzzerPattern = pattern;
+void confirmBuzzerPattern() {
+  // Called when long press confirms selection
+  activeBuzzerPattern = requestedBuzzerPattern;
   buzzerStep = 0;
   buzzerState = false;
   buzzerLast = millis();
   noTone(BUZZER_PIN);
 }
-
 // Non-blocking update (call inside loop)
 void updateBuzzerAlarm() {
   unsigned long now = millis();
 
-  switch (buzzerPattern) {
+  switch (activeBuzzerPattern) {
     case BUZZER_OFF:
       noTone(BUZZER_PIN);
       break;
@@ -491,7 +495,7 @@ void updateBuzzerAlarm() {
         buzzerStep = 1;
       } else if (now - buzzerLast >= 120) {
         noTone(BUZZER_PIN);
-        buzzerPattern = BUZZER_OFF; // done
+        activeBuzzerPattern = BUZZER_OFF;
         buzzerStep = 0;
       }
       break;
@@ -507,7 +511,7 @@ void updateBuzzerAlarm() {
         }
       } else if (now - buzzerLast >= duration + 20) {
         noTone(BUZZER_PIN);
-        buzzerPattern = BUZZER_OFF;
+        activeBuzzerPattern = BUZZER_OFF;
         buzzerStep = 0;
       }
       break;
@@ -523,7 +527,6 @@ void updateBuzzerAlarm() {
       break;
 
     case BUZZER_SOS: {
-      // SOS sequence: S(0,0,0), O(1,1,1), S(0,0,0) in steps
       unsigned int sosDurations[9] = {150,150,150, 400,400,400, 150,150,150};
       if (buzzerStep < 9) {
         if (now - buzzerLast >= sosDurations[buzzerStep]) {
@@ -532,7 +535,7 @@ void updateBuzzerAlarm() {
           buzzerStep++;
         }
       } else if (now - buzzerLast >= 200) {
-        buzzerPattern = BUZZER_OFF;
+        activeBuzzerPattern = BUZZER_OFF;
         buzzerStep = 0;
       }
       break;
