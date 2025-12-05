@@ -20,9 +20,9 @@
 const int IN1 = 2;           // Motor direction A
 const int IN2 = 3;           // Motor direction B
 const int EN1 = 4;           // Motor enable (PWM capable)
-const int LED_R = 5;         // LED Red
-const int LED_G = 6;         // LED Green
-const int LED_B = 7;         // LED Blue
+const int RGB_R = 5;         // LED Red
+const int RGB_G = 6;         // LED Green
+const int RGB_B = 7;         // LED Blue
 const int SWITCH_PIN = 8;    // SPDT switch
 const int LIMIT_PIN = 9;     // Limit Switch
 const int BUTTON_PIN = 10;   // Settings button
@@ -101,10 +101,20 @@ void setup() {
 
 
 
-  // Set the LED as outputs
+  // Set the Board LED as outputs
   pinMode(LED_RED, OUTPUT);
   pinMode(LED_BLUE, OUTPUT);
   pinMode(LED_GREEN, OUTPUT);
+
+  // Set the RGB LED as outputs
+  pinMode(RGB_R, OUTPUT);
+  pinMode(RGB_B, OUTPUT);
+  pinMode(RGB_G, OUTPUT);
+  // Turn LED fully off at startup
+  setRGB(0, 0, 0)
+
+  // Set the Buzzer Pin as an output
+  pinMode(BUZZER_PIN, OUTPUT);
 
   // Motor pins
   pinMode(IN1, OUTPUT);
@@ -141,6 +151,8 @@ void loop() {
       handleMotorControl();
     }
 
+    updateAnimations();   // RGB effects (rainbow, pulse, etc)
+    updateBuzzerAlarm();  // Looping buzzer patterns
     handleSerialMenu();
 }
 
@@ -189,41 +201,89 @@ void handleSettingsButton() {
   lastSettingsButtonState = reading;
 }
 
+
 // ==================================================================
-// === SETTINGS MENU FUNCTIONS ======================================
+// === SETTINGS MENU (Refactored / Data-Driven) ======================
 // ==================================================================
+
+/*
+ This system is fully modular:
+  - To add a new menu, create:
+      showX(), adjustX(), enterX()
+  - Then add one line inside the menuItems[] table below.
+
+ Core logic stays unchanged forever.
+*/
+
+// Forward declarations for menu handler functions
+
+
+
+// =============================================================
+// MENU STRUCTURE
+// =============================================================
+
+struct MenuItem {
+  const char* name;
+  void (*onEnter)();    // Called on long press when entering submenu
+  void (*onAdjust)();   // Called on short press while inside submenu
+  void (*onShow)();     // (Optional) show preview when scrolling menus
+};
+
+
+// =============================================================
+// MENU TABLE — ADD NEW MENUS HERE
+// =============================================================
+
+MenuItem menuItems[] = {
+  { "Motor Mode",      enterMotorMode,    adjustMotorMode,    showMotorMode },
+  { "LED Brightness",  enterBrightness,   adjustBrightness,   showBrightness },
+  { "Active Box",      enterActiveBox,    adjustActiveBox,    showActiveBox },
+  { "RGB LED",         enterRGB,          adjustRGB,          showRGB },
+  { "Buzzer Pattern",  enterBuzzer,       adjustBuzzer,       showBuzzer }
+};
+
+int totalMenus = sizeof(menuItems) / sizeof(MenuItem);
+
+
+// =============================================================
+//     MAIN MENU HANDLER (Button-driven navigation)
+// =============================================================
+
 void handleSerialMenu() {
   unsigned long now = millis();
 
-  // Reset to main menu if inactive too long
+  // Timeout → return to main screen
   if ((now - lastInteractionTime) > MENU_TIMEOUT_MS && (menuIndex != 0 || inSubMenu)) {
     Serial.println("\n⏱️ Menu timed out — returning to main screen.\n");
     menuIndex = 0;
     inSubMenu = false;
     showMenu();
   }
-  
-  // Handle short press → next menu item
+
+  // Short press: next menu item OR adjust submenu value
   if (shortPressCount > lastShortPressCount) {
     lastShortPressCount = shortPressCount;
-    lastInteractionTime = now;  // activity detected
+    lastInteractionTime = now;
 
     if (!inSubMenu) {
       menuIndex = (menuIndex + 1) % totalMenus;
       showMenu();
     } else {
-      adjustSubMenu();
+      menuItems[menuIndex].onAdjust();
     }
   }
 
-  // Handle long press → enter/confirm
+  // Long press: enter submenu OR confirm/save
   if (longPressCount > lastLongPressCount) {
     lastLongPressCount = longPressCount;
-    lastInteractionTime = now;  // activity detected
+    lastInteractionTime = now;
 
     if (!inSubMenu) {
       inSubMenu = true;
-      enterSubMenu();
+      Serial.print("⚙️ Editing ");
+      Serial.println(menuItems[menuIndex].name);
+      menuItems[menuIndex].onEnter();
     } else {
       inSubMenu = false;
       Serial.println("✅ Saved and returned to main menu.");
@@ -232,74 +292,290 @@ void handleSerialMenu() {
   }
 }
 
-// --- MENU DISPLAY ---
+
+// =============================================================
+//    MENU DISPLAY
+// =============================================================
 void showMenu() {
   Serial.println();
   Serial.print("> Setting ");
   Serial.print(menuIndex + 1);
   Serial.print(": ");
+  Serial.println(menuItems[menuIndex].name);
 
-  switch (menuIndex) {
-    case 0: Serial.println("Motor Mode"); break;
-    case 1: Serial.println("LED Brightness"); break;
-    case 2: Serial.println("Active Box"); break;
+  // Optional: live preview under each menu
+  if (menuItems[menuIndex].onShow) {
+    menuItems[menuIndex].onShow();
   }
 }
 
-// --- ENTER SUBMENU ---
-void enterSubMenu() {
-  Serial.print("⚙️ Editing ");
-  switch (menuIndex) {
-    case 0: Serial.println("Motor Mode"); showMotorMode(); break;
-    case 1: Serial.println("LED Brightness"); showBrightness(); break;
-    case 2: Serial.println("Active Box"); showActiveBox(); break;
-  }
-}
 
-// --- ADJUST VALUE ON SHORT PRESS ---
-void adjustSubMenu() {
-  switch (menuIndex) {
-    case 0:
-      motorAutoMode = !motorAutoMode;
-      showMotorMode();
-      break;
+// ==================================================================
+// === INDIVIDUAL MENU HANDLERS ======================================
+// ==================================================================
 
-    case 1:
-      led_brightness_percentage += 10;
-      if (led_brightness_percentage > 100) led_brightness_percentage = 0;
-      showBrightness();
-      adjustLED();
-      break;
-
-    case 2:
-      setActiveBox(active_box == "TREVOR" ? "MICHAEL" : "TREVOR");
-      showActiveBox();
-      break;
-  }
-}
-
-// --- DISPLAY HELPERS ---
+// ---------------- MOTOR MODE ----------------
 void showMotorMode() {
   Serial.print("Motor Mode: ");
   Serial.println(motorAutoMode ? "AUTO" : "MANUAL");
 }
+void adjustMotorMode() {
+  motorAutoMode = !motorAutoMode;
+  showMotorMode();
+}
+void enterMotorMode() {
+  showMotorMode();
+}
 
+
+// ---------------- LED BRIGHTNESS ----------------
 void showBrightness() {
   Serial.print("LED Brightness: ");
   Serial.print(led_brightness_percentage);
   Serial.println("%");
 }
+void adjustBrightness() {
+  led_brightness_percentage += 10;
+  if (led_brightness_percentage > 100) led_brightness_percentage = 0;
 
+  adjustLED();
+  showBrightness();
+}
+void enterBrightness() {
+  showBrightness();
+}
+
+
+// ---------------- ACTIVE BOX ----------------
 void showActiveBox() {
   Serial.print("Active Box: ");
   Serial.println(active_box);
 }
+void adjustActiveBox() {
+  setActiveBox(active_box == "TREVOR" ? "MICHAEL" : "TREVOR");
+  showActiveBox();
+}
+void enterActiveBox() {
+  showActiveBox();
+}
+
+
+// ---------------- RGB LED MENU ----------------
+// Example: switching between 0=Off, 1=Rainbow, 2=Pulse, 3=SolidColor, etc.
+int currentRGBMode = 0;
+
+void showRGB() {
+  Serial.print("RGB Mode: ");
+  switch (currentRGBMode) {
+    case 0: Serial.println("OFF"); break;
+    case 1: Serial.println("RAINBOW"); break;
+    case 2: Serial.println("PULSE"); break;
+    case 3: Serial.println("SOLID COLOR"); break;
+  }
+}
+void adjustRGB() {
+  currentRGBMode = (currentRGBMode + 1) % 4;
+  applyRGBMode(currentRGBMode);   // your real function
+  showRGB();
+}
+void enterRGB() {
+  showRGB();
+}
+
+
+// ---------------- BUZZER MENU ----------------
+int buzzerPattern = 0;
+
+void showBuzzer() {
+  Serial.print("Buzzer Pattern: ");
+  Serial.println(buzzerPattern);
+}
+void adjustBuzzer() {
+  buzzerPattern = (buzzerPattern + 1) % 5;
+  applyBuzzerPattern(buzzerPattern);  // your real function
+  showBuzzer();
+}
+void enterBuzzer() {
+  showBuzzer();
+}
+
+// ==================================================================
+// === RGB LED CONTROL ===============================================
+// ==================================================================
+void setRGB(uint8_t r, uint8_t g, uint8_t b) {
+  // invert because common anode LED
+  analogWrite(RGB_R, 255 - r);
+  analogWrite(RGB_G, 255 - g);
+  analogWrite(RGB_B, 255 - b);
+}
+
+enum RGBMode {
+  RGB_OFF,
+  RGB_WHITE,
+  RGB_RAINBOW,
+  RGB_BREATHING,
+  RGB_SOLID_RED,
+  RGB_SOLID_GREEN,
+  RGB_SOLID_BLUE,
+  RGB_MODE_COUNT
+};
+
+int currentRGBMode = RGB_OFF;
+
+void applyRGBMode() {
+  switch (currentRGBMode) {
+
+    case RGB_OFF:
+      setRGB(0,0,0);
+      break;
+
+    case RGB_WHITE:
+      setRGB(255,255,255);
+      break;
+
+    case RGB_SOLID_RED:
+      setRGB(255,0,0);
+      break;
+
+    case RGB_SOLID_GREEN:
+      setRGB(0,255,0);
+      break;
+
+    case RGB_SOLID_BLUE:
+      setRGB(0,0,255);
+      break;
+
+    case RGB_RAINBOW:
+      // animation handled in updateAnimations()
+      break;
+
+    case RGB_BREATHING:
+      // animation handled in updateAnimations()
+      break;
+  }
+}
+
+unsigned long lastRGBAnimation = 0;
+int rainbowPos = 0;
+int breathValue = 0;
+int breathDir = 1;
+
+void updateAnimations() {
+  unsigned long now = millis();
+
+  // Rainbow cycle every 20 ms
+  if (currentRGBMode == RGB_RAINBOW && now - lastRGBAnimation > 20) {
+    lastRGBAnimation = now;
+
+    // simple rainbow wheel
+    int r = (sin((rainbowPos + 0) * 0.05) * 127) + 128;
+    int g = (sin((rainbowPos + 2) * 0.05) * 127) + 128;
+    int b = (sin((rainbowPos + 4) * 0.05) * 127) + 128;
+    setRGB(r,g,b);
+
+    rainbowPos++;
+  }
+
+  // Breathing mode every 15 ms
+  if (currentRGBMode == RGB_BREATHING && now - lastRGBAnimation > 15) {
+    lastRGBAnimation = now;
+
+    breathValue += breathDir;
+    if (breathValue >= 255) breathDir = -1;
+    if (breathValue <= 0) breathDir = 1;
+
+    setRGB(breathValue, breathValue, breathValue);
+  }
+}
 
 
 
+// ==================================================================
+// === BUZZER CONTROL ===============================================
+// ==================================================================
+bool buzzerLoopAlarm = false;
+unsigned long buzzerLast = 0;
+bool buzzerState = false;
 
+void stopBuzzer() {
+  buzzerLoopAlarm = false;
+  noTone(BUZZER_PIN);
+}
 
+// Simple beep
+void playBeep(int freq, int duration) {
+  tone(BUZZER_PIN, freq, duration);
+}
 
+// Sequence helper
+void playBeepSequence(std::initializer_list<int> freqs, int duration) {
+  for (int f : freqs) {
+    tone(BUZZER_PIN, f, duration);
+    delay(duration + 20);
+  }
+  noTone(BUZZER_PIN);
+}
+
+// Alarm loop helper
+void updateBuzzerAlarm() {
+  unsigned long now = millis();
+  if (!buzzerLoopAlarm) return;
+
+  if (now - buzzerLast > 250) {
+    buzzerLast = now;
+    buzzerState = !buzzerState;
+
+    if (buzzerState)
+      tone(BUZZER_PIN, 1000);
+    else
+      noTone(BUZZER_PIN);
+  }
+}
+
+// Morse SOS
+void startMorseSOS() {
+  // S (●●●)
+  playBeep(800, 150); delay(150);
+  playBeep(800, 150); delay(150);
+  playBeep(800, 150); delay(200);
+
+  // O (−−−)
+  playBeep(800, 400); delay(200);
+  playBeep(800, 400); delay(200);
+  playBeep(800, 400); delay(200);
+
+  // S (●●●)
+  playBeep(800, 150); delay(150);
+  playBeep(800, 150); delay(150);
+  playBeep(800, 150);
+}
+
+// Apply pattern
+void applyBuzzerPattern(int pattern) {
+  stopBuzzer();
+
+  switch (pattern) {
+    case 0: // OFF
+      break;
+
+    case 1: // Single beep
+      playBeep(1000, 120);
+      break;
+
+    case 2: // Up-down chirp
+      playBeepSequence({800, 1200, 800}, 120);
+      break;
+
+    case 3: // Looping alarm pattern
+      buzzerLoopAlarm = true;
+      buzzerLast = millis();
+      break;
+
+    case 4: // SOS
+      startMorseSOS();
+      break;
+  }
+}
 
 
 
@@ -361,7 +637,7 @@ void modifyMotorState(bool switchState, bool buttonState) {
 
 
 // ==================================================================
-// === LED CONTROL ==================================================
+// === BOARD LED CONTROL ============================================
 // ==================================================================
 void adjustLED() {
   if (led_on) {
@@ -375,6 +651,10 @@ void adjustLED() {
   }
 }
 
+
+// ==================================================================
+// === ACTIVE BOX SETTER ============================================
+// ==================================================================
 void setActiveBox(String box) {
   active_box = box;
   onActiveBoxChange();

@@ -5,9 +5,9 @@
 extern const int IN1;
 extern const int IN2;
 extern const int EN1;
-extern const int LED_R;
-extern const int LED_G;
-extern const int LED_B;
+extern const int RGB_R;
+extern const int RGB_G;
+extern const int RGB_B;
 extern const int SWITCH_PIN;
 extern const int LIMIT_PIN;
 extern const int BUTTON_PIN;
@@ -68,8 +68,25 @@ void onActiveBoxChange();
 void showMenu();
 void enterSubMenu();
 void adjustSubMenu();
+
 void showMotorMode();
+void adjustMotorMode();
+void enterMotorMode();
+
 void showBrightness();
+void adjustBrightness();
+void enterBrightness();
+
 void showActiveBox();
+void adjustActiveBox();
+void enterActiveBox();
+
+void showRGB();
+void adjustRGB();
+void enterRGB();
+
+void showBuzzer();
+void adjustBuzzer();
+void enterBuzzer();
 
 #endif
