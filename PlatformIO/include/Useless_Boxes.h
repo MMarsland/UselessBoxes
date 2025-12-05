@@ -13,62 +13,43 @@ extern const int LIMIT_PIN;
 extern const int BUTTON_PIN;
 extern const int BUZZER_PIN;
 
-// ===== SETTINGS BUTTON HANDLER =====
+// ===== SETTINGS BUTTON =====
 extern const unsigned long LONG_PRESS_TIME;
 extern const unsigned long DEBOUNCE_TIME;
 
-extern int menuIndex;
-extern const int totalMenus;
-extern bool inSubMenu;
-
-extern bool motorAutoMode;
-extern int led_brightness_percentage;
-
+// Button state tracking
 extern bool settingsButtonState;
 extern bool lastSettingsButtonState;
-
 extern unsigned long pressedTime;
 extern unsigned long releasedTime;
-
 extern bool longPressActive;
 extern unsigned long lastDebounceTime;
-
 extern int shortPressCount;
 extern int longPressCount;
-
 extern int lastShortPressCount;
 extern int lastLongPressCount;
 
+// ===== MENU SYSTEM =====
+extern int menuIndex;
+extern int totalMenus;
+extern bool inSubMenu;
 extern const unsigned long MENU_TIMEOUT_MS;
 extern unsigned long lastInteractionTime;
 
-extern bool led_on;
+// Menu structure
+struct MenuItem {
+  const char* name;
+  void (*onEnter)();
+  void (*onAdjust)();
+  void (*onShow)();
+};
+extern MenuItem menuItems[];
 
-// ===== MOTOR CONTROL =====
-extern unsigned long lastMotorUpdate;
-extern const unsigned long MOTOR_UPDATE_INTERVAL;
-
-extern bool switch_forward;
-extern bool button_pressed;
-extern bool motor_forward;
-extern bool motor_enabled;
-
-// ===== FUNCTION PROTOTYPES =====
-
-// Core handlers
-void handleSettingsButton();
+// Menu handlers
 void handleSerialMenu();
-void handleMotorControl();
-void modifyMotorState(bool switchState, bool buttonState);
-void adjustLED();
-void setActiveBox(String box);
-void onActiveBoxChange();
-
-// Menu helpers
 void showMenu();
-void enterSubMenu();
-void adjustSubMenu();
 
+// Individual menu functions
 void showMotorMode();
 void adjustMotorMode();
 void enterMotorMode();
@@ -89,4 +70,72 @@ void showBuzzer();
 void adjustBuzzer();
 void enterBuzzer();
 
-#endif
+// ===== RGB LED CONTROL =====
+enum RGBMode {
+  RGB_OFF,
+  RGB_WHITE,
+  RGB_RAINBOW,
+  RGB_BREATHING,
+  RGB_SOLID_RED,
+  RGB_SOLID_GREEN,
+  RGB_SOLID_BLUE,
+  RGB_MODE_COUNT
+};
+
+int currentRGBMode = RGB_OFF;
+unsigned long lastRGBAnimation = 0;
+int rainbowPos = 0;
+int breathValue = 0;
+int breathDir = 1;
+
+const int RGB_UPDATE_INTERVAL = 20; // ms
+
+void setRGB(uint8_t r, uint8_t g, uint8_t b);
+void applyRGBMode();
+void updateAnimations();
+
+// ===== BUZZER CONTROL =====
+enum BuzzerPattern {
+  BUZZER_OFF,
+  BUZZER_SINGLE,
+  BUZZER_CHIRP,
+  BUZZER_LOOP,
+  BUZZER_SOS,
+  BUZZER_PATTERN_COUNT
+};
+
+int buzzerPattern = BUZZER_OFF;
+bool buzzerState = false;           // on/off state for looping patterns
+unsigned long buzzerLast = 0;       // last toggle time
+unsigned int buzzerStep = 0;        // step in sequence
+const unsigned long BUZZER_INTERVAL = 250; // ms
+
+void stopBuzzer();
+void applyBuzzerPattern(int pattern);
+void updateBuzzerAlarm();
+
+
+// ===== MOTOR CONTROL =====
+extern bool switch_forward;
+extern bool button_pressed;
+extern bool motor_forward;
+extern bool motor_enabled;
+
+void handleMotorControl();
+void modifyMotorState(bool switchState, bool buttonState);
+
+// ===== BOARD LED CONTROL =====
+extern bool led_on;
+extern int led_brightness_percentage;
+void adjustLED();
+
+// ===== ACTIVE BOX =====
+extern String active_box;
+
+void setActiveBox(String box);
+void onActiveBoxChange();
+
+// ===== SETTINGS BUTTON HANDLER =====
+void handleSettingsButton();
+
+#endif // USELESS_BOXES_H

@@ -29,14 +29,12 @@ const int BUTTON_PIN = 10;   // Settings button
 const int BUZZER_PIN = 11;   // Buzzer
 
 // === SETTINGS BUTTON HANDLER ======================================
+int menuIndex = 0;
+bool inSubMenu = false;
+
 // Adjustable thresholds
 const unsigned long LONG_PRESS_TIME = 1000;   // ms
 const unsigned long DEBOUNCE_TIME   = 50;     // ms
-
-// === MENU SYSTEM VARIABLES ===
-int menuIndex = 0;
-const int totalMenus = 3;
-bool inSubMenu = false;
 
 // SETTINGS
 bool motorAutoMode = false;
@@ -111,7 +109,7 @@ void setup() {
   pinMode(RGB_B, OUTPUT);
   pinMode(RGB_G, OUTPUT);
   // Turn LED fully off at startup
-  setRGB(0, 0, 0)
+  setRGB(0, 0, 0);
 
   // Set the Buzzer Pin as an output
   pinMode(BUZZER_PIN, OUTPUT);
@@ -223,12 +221,6 @@ void handleSettingsButton() {
 // MENU STRUCTURE
 // =============================================================
 
-struct MenuItem {
-  const char* name;
-  void (*onEnter)();    // Called on long press when entering submenu
-  void (*onAdjust)();   // Called on short press while inside submenu
-  void (*onShow)();     // (Optional) show preview when scrolling menus
-};
 
 
 // =============================================================
@@ -361,129 +353,104 @@ void enterActiveBox() {
 
 
 // ---------------- RGB LED MENU ----------------
-// Example: switching between 0=Off, 1=Rainbow, 2=Pulse, 3=SolidColor, etc.
-int currentRGBMode = 0;
-
 void showRGB() {
   Serial.print("RGB Mode: ");
   switch (currentRGBMode) {
-    case 0: Serial.println("OFF"); break;
-    case 1: Serial.println("RAINBOW"); break;
-    case 2: Serial.println("PULSE"); break;
-    case 3: Serial.println("SOLID COLOR"); break;
+    case RGB_OFF:        Serial.println("OFF"); break;
+    case RGB_WHITE:      Serial.println("WHITE"); break;
+    case RGB_RAINBOW:    Serial.println("RAINBOW"); break;
+    case RGB_BREATHING:  Serial.println("BREATHING"); break;
+    case RGB_SOLID_RED:  Serial.println("RED"); break;
+    case RGB_SOLID_GREEN:Serial.println("GREEN"); break;
+    case RGB_SOLID_BLUE: Serial.println("BLUE"); break;
+    default:             Serial.println("UNKNOWN"); break;
   }
 }
+
 void adjustRGB() {
-  currentRGBMode = (currentRGBMode + 1) % 4;
-  applyRGBMode(currentRGBMode);   // your real function
+  currentRGBMode = (RGBMode)((currentRGBMode + 1) % RGB_MODE_COUNT);
+  applyRGBMode();   // update immediately for static colors
   showRGB();
 }
+
 void enterRGB() {
   showRGB();
 }
 
 
 // ---------------- BUZZER MENU ----------------
-int buzzerPattern = 0;
-
 void showBuzzer() {
   Serial.print("Buzzer Pattern: ");
-  Serial.println(buzzerPattern);
+  switch(buzzerPattern) {
+    case BUZZER_OFF:    Serial.println("OFF"); break;
+    case BUZZER_SINGLE: Serial.println("SINGLE"); break;
+    case BUZZER_CHIRP:  Serial.println("CHIRP"); break;
+    case BUZZER_LOOP:   Serial.println("LOOP"); break;
+    case BUZZER_SOS:    Serial.println("SOS"); break;
+    default:            Serial.println("UNKNOWN"); break;
+  }
 }
+
 void adjustBuzzer() {
-  buzzerPattern = (buzzerPattern + 1) % 5;
-  applyBuzzerPattern(buzzerPattern);  // your real function
+  buzzerPattern = (buzzerPattern + 1) % BUZZER_PATTERN_COUNT;
+  applyBuzzerPattern(buzzerPattern);
   showBuzzer();
 }
+
 void enterBuzzer() {
   showBuzzer();
 }
-
 // ==================================================================
 // === RGB LED CONTROL ===============================================
 // ==================================================================
 void setRGB(uint8_t r, uint8_t g, uint8_t b) {
-  // invert because common anode LED
+  // Common anode inversion
   analogWrite(RGB_R, 255 - r);
   analogWrite(RGB_G, 255 - g);
   analogWrite(RGB_B, 255 - b);
 }
 
-enum RGBMode {
-  RGB_OFF,
-  RGB_WHITE,
-  RGB_RAINBOW,
-  RGB_BREATHING,
-  RGB_SOLID_RED,
-  RGB_SOLID_GREEN,
-  RGB_SOLID_BLUE,
-  RGB_MODE_COUNT
-};
-
-int currentRGBMode = RGB_OFF;
-
 void applyRGBMode() {
   switch (currentRGBMode) {
-
     case RGB_OFF:
       setRGB(0,0,0);
       break;
-
     case RGB_WHITE:
       setRGB(255,255,255);
       break;
-
     case RGB_SOLID_RED:
       setRGB(255,0,0);
       break;
-
     case RGB_SOLID_GREEN:
       setRGB(0,255,0);
       break;
-
     case RGB_SOLID_BLUE:
       setRGB(0,0,255);
       break;
-
     case RGB_RAINBOW:
-      // animation handled in updateAnimations()
-      break;
-
     case RGB_BREATHING:
-      // animation handled in updateAnimations()
+      // handled in updateAnimations()
       break;
   }
 }
 
-unsigned long lastRGBAnimation = 0;
-int rainbowPos = 0;
-int breathValue = 0;
-int breathDir = 1;
-
 void updateAnimations() {
   unsigned long now = millis();
-
-  // Rainbow cycle every 20 ms
-  if (currentRGBMode == RGB_RAINBOW && now - lastRGBAnimation > 20) {
+  
+  if (currentRGBMode == RGB_RAINBOW && now - lastRGBAnimation > RGB_UPDATE_INTERVAL) {
     lastRGBAnimation = now;
-
-    // simple rainbow wheel
-    int r = (sin((rainbowPos + 0) * 0.05) * 127) + 128;
-    int g = (sin((rainbowPos + 2) * 0.05) * 127) + 128;
-    int b = (sin((rainbowPos + 4) * 0.05) * 127) + 128;
+    int r = (sin((rainbowPos) * 0.05) * 127) + 128;
+    int g = (sin((rainbowPos*2) * 0.05) * 127) + 128;
+    int b = (sin((rainbowPos*3) * 0.05) * 127) + 128;
     setRGB(r,g,b);
-
     rainbowPos++;
   }
 
-  // Breathing mode every 15 ms
-  if (currentRGBMode == RGB_BREATHING && now - lastRGBAnimation > 15) {
+  if (currentRGBMode == RGB_BREATHING && now - lastRGBAnimation > RGB_UPDATE_INTERVAL) {
     lastRGBAnimation = now;
-
-    breathValue += breathDir;
-    if (breathValue >= 255) breathDir = -1;
-    if (breathValue <= 0) breathDir = 1;
-
+    breathValue += breathDir * 2; // adjust speed
+    if (breathValue >= 250) breathDir = -1;
+    if (breathValue <= 5) breathDir = 1;
     setRGB(breathValue, breathValue, breathValue);
   }
 }
@@ -493,87 +460,83 @@ void updateAnimations() {
 // ==================================================================
 // === BUZZER CONTROL ===============================================
 // ==================================================================
-bool buzzerLoopAlarm = false;
-unsigned long buzzerLast = 0;
-bool buzzerState = false;
-
 void stopBuzzer() {
-  buzzerLoopAlarm = false;
+  buzzerPattern = BUZZER_OFF;
+  noTone(BUZZER_PIN);
+  buzzerStep = 0;
+  buzzerState = false;
+}
+
+void applyBuzzerPattern(int pattern) {
+  buzzerPattern = pattern;
+  buzzerStep = 0;
+  buzzerState = false;
+  buzzerLast = millis();
   noTone(BUZZER_PIN);
 }
 
-// Simple beep
-void playBeep(int freq, int duration) {
-  tone(BUZZER_PIN, freq, duration);
-}
-
-// Sequence helper
-void playBeepSequence(std::initializer_list<int> freqs, int duration) {
-  for (int f : freqs) {
-    tone(BUZZER_PIN, f, duration);
-    delay(duration + 20);
-  }
-  noTone(BUZZER_PIN);
-}
-
-// Alarm loop helper
+// Non-blocking update (call inside loop)
 void updateBuzzerAlarm() {
   unsigned long now = millis();
-  if (!buzzerLoopAlarm) return;
 
-  if (now - buzzerLast > 250) {
-    buzzerLast = now;
-    buzzerState = !buzzerState;
-
-    if (buzzerState)
-      tone(BUZZER_PIN, 1000);
-    else
+  switch (buzzerPattern) {
+    case BUZZER_OFF:
       noTone(BUZZER_PIN);
-  }
-}
-
-// Morse SOS
-void startMorseSOS() {
-  // S (●●●)
-  playBeep(800, 150); delay(150);
-  playBeep(800, 150); delay(150);
-  playBeep(800, 150); delay(200);
-
-  // O (−−−)
-  playBeep(800, 400); delay(200);
-  playBeep(800, 400); delay(200);
-  playBeep(800, 400); delay(200);
-
-  // S (●●●)
-  playBeep(800, 150); delay(150);
-  playBeep(800, 150); delay(150);
-  playBeep(800, 150);
-}
-
-// Apply pattern
-void applyBuzzerPattern(int pattern) {
-  stopBuzzer();
-
-  switch (pattern) {
-    case 0: // OFF
       break;
 
-    case 1: // Single beep
-      playBeep(1000, 120);
+    case BUZZER_SINGLE:
+      if (buzzerStep == 0) {
+        tone(BUZZER_PIN, 1000);
+        buzzerLast = now;
+        buzzerStep = 1;
+      } else if (now - buzzerLast >= 120) {
+        noTone(BUZZER_PIN);
+        buzzerPattern = BUZZER_OFF; // done
+        buzzerStep = 0;
+      }
       break;
 
-    case 2: // Up-down chirp
-      playBeepSequence({800, 1200, 800}, 120);
+    case BUZZER_CHIRP: {
+      int chirpFreqs[3] = {800, 1200, 800};
+      int duration = 120;
+      if (buzzerStep < 3) {
+        if (now - buzzerLast >= duration + 20 || buzzerStep == 0) {
+          tone(BUZZER_PIN, chirpFreqs[buzzerStep]);
+          buzzerLast = now;
+          buzzerStep++;
+        }
+      } else if (now - buzzerLast >= duration + 20) {
+        noTone(BUZZER_PIN);
+        buzzerPattern = BUZZER_OFF;
+        buzzerStep = 0;
+      }
+      break;
+    }
+
+    case BUZZER_LOOP:
+      if (now - buzzerLast >= BUZZER_INTERVAL) {
+        buzzerLast = now;
+        buzzerState = !buzzerState;
+        if (buzzerState) tone(BUZZER_PIN, 1000);
+        else noTone(BUZZER_PIN);
+      }
       break;
 
-    case 3: // Looping alarm pattern
-      buzzerLoopAlarm = true;
-      buzzerLast = millis();
+    case BUZZER_SOS: {
+      // SOS sequence: S(0,0,0), O(1,1,1), S(0,0,0) in steps
+      unsigned int sosDurations[9] = {150,150,150, 400,400,400, 150,150,150};
+      if (buzzerStep < 9) {
+        if (now - buzzerLast >= sosDurations[buzzerStep]) {
+          tone(BUZZER_PIN, 800, sosDurations[buzzerStep]);
+          buzzerLast = now;
+          buzzerStep++;
+        }
+      } else if (now - buzzerLast >= 200) {
+        buzzerPattern = BUZZER_OFF;
+        buzzerStep = 0;
+      }
       break;
-
-    case 4: // SOS
-      startMorseSOS();
-      break;
+    }
   }
 }
 
