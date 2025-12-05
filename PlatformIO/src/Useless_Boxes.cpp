@@ -12,7 +12,8 @@
   which are called when their values are changed from the Dashboard.
   These functions are generated with the Thing and added at the end of this sketch.
 */
-
+#include <Arduino.h>
+#include "Useless_Boxes.h"
 #include "thingProperties.h"
 
 // ===== Pin assignments =====

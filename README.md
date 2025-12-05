@@ -38,6 +38,22 @@ Let me know what you think and stay tuned for more updates!
 
 Currently using **Arduino Cloud** to set up the device as a "Thing" and a dashboard to control and monitor the variables.
 
+### For Development:
+
+I am currently developing in VSCode using the PlatformIO extension. I started in the ArduinoCloud Editor, and then copied UselessBoxes.ino, thingProperties.h, and arduino_secrets.h from there into my local ArduinoIDE. Then I installed all the required libraries from the ArduinoIDE (ArduinoIoTCloud, etc...), then I was able to make a project in PlatformIO in VS code and copy over the files. The modifications you must make to get it building in PlatformIO are:
+
+1. Add these lines to platformio.ini
+   ```
+   lib_extra_dirs = ~/Documents/Arduino/libraries
+   lib_ignore = WiFiNINA
+   ```
+2. Change Useless_Boxes.ino to Useless_Boxes.cpp
+3. Write a "Useless_Boxes.h" with variable and function definitions (Ask an LLM for the header from the .cpp file)
+3. Include `<Arduino>` and "Useless_Boxes.h" in Useless_Boxes.cpp
+4. Include "arduino_secrets.h" in thingProperties.h
+
+When running the code from this repository, all you should need to do is clone the repo, and then ensure you have Arduino ESP32 Boards by Arduino (2.0.18-arduino.5) installed in the ArduinoIDE, and the ArduinoIoTCloud by Arduino (2.8.0) library installed. Once these (And all dependencies) are installed in the ArduinoIDE, the project should build with PlatformIO in VSCode (Knock on Wood)
+
 ---
 
 ## ⚡ Step 2: Assemble the Circuit
@@ -59,76 +75,75 @@ Currently using **Arduino Cloud** to set up the device as a "Thing" and a dashbo
 
 ## 🧠 Arduino Nano ESP32
 
-| Pin     | Connected To                                            | Purpose / Notes                          |
-| ------- | ------------------------------------------------------- | ---------------------------------------- |
-| **D2**  | L293D **Pin 2 (IN1)**                                   | Motor direction control A (digital OUT). |
-| **D3**  | L293D **Pin 7 (IN2)**                                   | Motor direction control B (digital OUT). |
-| **D4**  | L293D **Pin 1 (EN1)**                                   | Motor enable / PWM speed control.        |
-| **D5**  | RGB LED **Blue** → 220Ω → LED **B Pin**                 | Blue channel (PWM).                      |
-| **D6**  | RGB LED **Green** → 220Ω → LED **G Pin**                | Green channel (PWM).                     |
-| **D7**  | RGB LED **Red** → 220Ω → LED **R Pin**                  | Red channel (PWM).                       |
-| **D8**  | SPDT Switch **Throw A**                                 | Reads switch position (`INPUT_PULLUP`).  |
-| **D9**  | Limit Switch **NC Terminal**                            | Reads limit state (`INPUT_PULLUP`).      |
-| **D10** | Button **NC Terminal**                                  | Reads button press (`INPUT_PULLUP`).     |
-| **D11** | Buzzer **+ Pin**                                        | Buzzer output (tone / PWM).              |
-| **3V3** | —                                                       | Not used.                                |
-| **GND** | All grounds (switches, LED common, buzzer −, L293D GND) | Shared ground.                           |
+| Pin           | Connected To                                             | Purpose / Notes                           |
+| ------------- | -------------------------------------------------------- | ----------------------------------------- |
+| **D2**  | L293D**Pin 2 (IN1)**                               | Motor direction control A (digital OUT).  |
+| **D3**  | L293D**Pin 7 (IN2)**                               | Motor direction control B (digital OUT).  |
+| **D4**  | L293D**Pin 1 (EN1)**                               | Motor enable / PWM speed control.         |
+| **D5**  | RGB LED**Blue** → 220Ω → LED **B Pin**    | Blue channel (PWM).                       |
+| **D6**  | RGB LED**Green** → 220Ω → LED **G Pin**   | Green channel (PWM).                      |
+| **D7**  | RGB LED**Red** → 220Ω → LED **R Pin**     | Red channel (PWM).                        |
+| **D8**  | SPDT Switch**Throw A**                             | Reads switch position (`INPUT_PULLUP`). |
+| **D9**  | Limit Switch**NC Terminal**                        | Reads limit state (`INPUT_PULLUP`).     |
+| **D10** | Button**NC Terminal**                              | Reads button press (`INPUT_PULLUP`).    |
+| **D11** | Buzzer**+ Pin**                                          | Buzzer output (tone / PWM).               |
+| **3V3** | —                                                       | Not used.                                 |
+| **GND** | All grounds (switches, LED common, buzzer −, L293D GND) | Shared ground.                            |
 
 ## 🐜 L293DNE (H-Bridge)
 
-| L293D Pin            | Function    | Connected To     | Notes              |
-| -------------------- | ----------- | ---------------- | ------------------ |
-| **Pin 1 (EN1)**      | Enable 1    | Arduino **D4**   | PWM motor control  |
-| **Pin 2 (IN1)**      | Input 1     | Arduino **D2**   | Direction A        |
-| **Pin 7 (IN2)**      | Input 2     | Arduino **D3**   | Direction B        |
-| **Pin 3 (OUT1)**     | Motor A     | Motor Terminal 1 | —                  |
-| **Pin 6 (OUT2)**     | Motor B     | Motor Terminal 2 | —                  |
-| **Pin 4, 5, 12, 13** | GND         | Arduino **GND**  | Common ground      |
-| **Pin 8 (VCC2)**     | Motor Power | +6V external     | Motor supply       |
-| **Pin 16 (VCC1)**    | Logic Power | +5V supply       | L293D logic supply |
+| L293D Pin                  | Function    | Connected To         | Notes              |
+| -------------------------- | ----------- | -------------------- | ------------------ |
+| **Pin 1 (EN1)**      | Enable 1    | Arduino**D4**  | PWM motor control  |
+| **Pin 2 (IN1)**      | Input 1     | Arduino**D2**  | Direction A        |
+| **Pin 7 (IN2)**      | Input 2     | Arduino**D3**  | Direction B        |
+| **Pin 3 (OUT1)**     | Motor A     | Motor Terminal 1     | —                 |
+| **Pin 6 (OUT2)**     | Motor B     | Motor Terminal 2     | —                 |
+| **Pin 4, 5, 12, 13** | GND         | Arduino**GND** | Common ground      |
+| **Pin 8 (VCC2)**     | Motor Power | +6V external         | Motor supply       |
+| **Pin 16 (VCC1)**    | Logic Power | +5V supply           | L293D logic supply |
 
 ## 🔀 SPDT Switch (2-position)
 
-| Switch Terminal | Connected To   | Purpose                    |
-| --------------- | -------------- | -------------------------- |
-| **Common (C)**  | GND            | Provides LOW when selected |
-| **Throw A**     | Arduino **D8** | Reads switch state         |
-| **Throw B**     | —              | Unused                     |
+| Switch Terminal      | Connected To        | Purpose                    |
+| -------------------- | ------------------- | -------------------------- |
+| **Common (C)** | GND                 | Provides LOW when selected |
+| **Throw A**    | Arduino**D8** | Reads switch state         |
+| **Throw B**    | —                  | Unused                     |
 
 ## 🧱 Limit Switch (Momentary)
 
-| Terminal | Connected To                  | Purpose                                    |
-| -------- | ----------------------------- | ------------------------------------------ |
-| **C**    | GND                           | LOW when triggered                         |
-| **NC**   | Arduino **D9** (INPUT_PULLUP) | Default connected → LOW when limit reached |
-| **NO**   | —                             | Not used                                   |
+| Terminal     | Connected To                       | Purpose                                     |
+| ------------ | ---------------------------------- | ------------------------------------------- |
+| **C**  | GND                                | LOW when triggered                          |
+| **NC** | Arduino**D9** (INPUT_PULLUP) | Default connected → LOW when limit reached |
+| **NO** | —                                 | Not used                                    |
 
 ## 🔘 Button (Momentary)
 
-| Terminal | Connected To                   | Purpose                |
-| -------- | ------------------------------ | ---------------------- |
-| **C**    | GND                            | Pulls LOW when pressed |
-| **NC**   | Arduino **D10** (INPUT_PULLUP) | Reads button press     |
-| **NO**   | —                              | Not used               |
+| Terminal     | Connected To                        | Purpose                |
+| ------------ | ----------------------------------- | ---------------------- |
+| **C**  | GND                                 | Pulls LOW when pressed |
+| **NC** | Arduino**D10** (INPUT_PULLUP) | Reads button press     |
+| **NO** | —                                  | Not used               |
 
 ## 🔊 Buzzer
 
-| Buzzer Pin | Connected To    | Purpose             |
-| ---------- | --------------- | ------------------- |
-| **+**      | Arduino **D11** | Output for tone/PWM |
-| **–**      | GND             | —                   |
+| Buzzer Pin   | Connected To         | Purpose             |
+| ------------ | -------------------- | ------------------- |
+| **+**  | Arduino**D11** | Output for tone/PWM |
+| **–** | GND                  | —                  |
 
 ## 🌈 RGB LED (Common Cathode recommended)
 
 Each color pin requires a **220Ω resistor**.
 
-| LED Pin            | Connected To          | Notes         |
-| ------------------ | --------------------- | ------------- |
-| **R (Red)**        | 220Ω → Arduino **D7** | PWM capable   |
-| **G (Green)**      | 220Ω → Arduino **D6** | PWM capable   |
-| **B (Blue)**       | 220Ω → Arduino **D5** | PWM capable   |
-| **Common Anode** | GND                   | Shared ground |
-
+| LED Pin                | Connected To                 | Notes         |
+| ---------------------- | ---------------------------- | ------------- |
+| **R (Red)**      | 220Ω → Arduino**D7** | PWM capable   |
+| **G (Green)**    | 220Ω → Arduino**D6** | PWM capable   |
+| **B (Blue)**     | 220Ω → Arduino**D5** | PWM capable   |
+| **Common Anode** | GND                          | Shared ground |
 
 ---
 
