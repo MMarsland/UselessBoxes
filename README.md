@@ -49,8 +49,8 @@ I am currently developing in VSCode using the PlatformIO extension. I started in
    ```
 2. Change Useless_Boxes.ino to Useless_Boxes.cpp
 3. Write a "Useless_Boxes.h" with variable and function definitions (Ask an LLM for the header from the .cpp file)
-3. Include `<Arduino>` and "Useless_Boxes.h" in Useless_Boxes.cpp
-4. Include "arduino_secrets.h" in thingProperties.h
+4. Include `<Arduino>` and "Useless_Boxes.h" in Useless_Boxes.cpp
+5. Include "arduino_secrets.h" in thingProperties.h
 
 When running the code from this repository, all you should need to do is clone the repo, and then ensure you have Arduino ESP32 Boards by Arduino (2.0.18-arduino.5) installed in the ArduinoIDE, and the ArduinoIoTCloud by Arduino (2.8.0) library installed. Once these (And all dependencies) are installed in the ArduinoIDE, the project should build with PlatformIO in VSCode (Knock on Wood)
 
@@ -280,17 +280,35 @@ I can upgrade from Arduino Cloud to a different free option in the future such a
 
 ### ⚙️ HARDWARE
 
-#### Test NeoPixels
-
-- Just ordered a logic level shifter and I will re-test
-- They seem like they will work once I have the shifter
-
 #### Design Hardware
 
 - Will need to decide on final wiring, how will the wires connect, where/how will the eletronics be seated
 - Prototype and design 3D printed housing
 - Ensure components can fit and function
 - Make design simple, and practical for desk use
+
+#### Solder Components
+
+* [X] Power Jack
+* [X] Switch
+* [X] Limit Switch
+* [X] Buzzer
+* [X] LED
+* [X] H-Bridge
+* [X] Button
+* [X] Motor
+
+##### Solder to Arduino
+
+* [X] Power Jack
+* [X] Switch
+* [X] Limit Switch
+* [X] Buzzer
+* [X] LED
+* [X] H-Bridge
+* [X] Button
+* [X] Solder all power to jack
+* [X] Solder all ground to jack
 
 #### Finalize Hardware
 
@@ -308,6 +326,12 @@ I can upgrade from Arduino Cloud to a different free option in the future such a
 
 - Setup Over-The-Air updates so the software can be modified
 - Setup wifi connection process so that devices can be easily set up
+
+### Current TODO
+
+- Update Box Design
+  - Adjust Arm Alignment
+  - Modify Printing Orientation to make the back better
 
 ##### ✅ Notes
 

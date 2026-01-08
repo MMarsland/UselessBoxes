@@ -82,7 +82,7 @@ enum RGBMode {
   RGB_MODE_COUNT
 };
 
-int currentRGBMode = RGB_OFF;
+int currentRGBMode = RGB_RAINBOW;
 unsigned long lastRGBAnimation = 0;
 int rainbowPos = 0;
 int breathValue = 0;
@@ -105,7 +105,7 @@ enum BuzzerPattern {
 };
 
 int requestedBuzzerPattern = BUZZER_OFF; // updated by menu immediately
-int activeBuzzerPattern = BUZZER_OFF;    // only updated on "confirm" (long press)
+int activeBuzzerPattern = BUZZER_SOS;    // only updated on "confirm" (long press)
 bool buzzerState = false;           // on/off state for looping patterns
 unsigned long buzzerLast = 0;       // last toggle time
 unsigned int buzzerStep = 0;        // step in sequence

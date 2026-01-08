@@ -17,12 +17,12 @@
 #include "thingProperties.h"
 
 // ===== Pin assignments =====
-const int IN1 = 2;           // Motor direction A
-const int IN2 = 3;           // Motor direction B
-const int EN1 = 4;           // Motor enable (PWM capable)
-const int RGB_R = 5;         // LED Red
-const int RGB_G = 6;         // LED Green
-const int RGB_B = 7;         // LED Blue
+const int EN1 = 2;           // Motor enable (PWM capable)
+const int IN1 = 3;           // Motor direction A
+const int IN2 = 4;           // Motor direction B
+const int RGB_R = 7;         // LED Red
+const int RGB_G = 5;         // LED Green
+const int RGB_B = 6;         // LED Blue
 const int SWITCH_PIN = 8;    // SPDT switch
 const int LIMIT_PIN = 9;     // Limit Switch
 const int BUTTON_PIN = 10;   // Settings button
@@ -38,7 +38,7 @@ const unsigned long DEBOUNCE_TIME   = 50;     // ms
 
 // SETTINGS
 bool motorAutoMode = false;
-int led_brightness_percentage = 100; // 0–100
+int led_brightness_percentage = 0;
 
 // Variables for button tracking
 bool settingsButtonState = HIGH;
@@ -504,12 +504,12 @@ void updateBuzzerAlarm() {
       int chirpFreqs[3] = {800, 1200, 800};
       int duration = 120;
       if (buzzerStep < 3) {
-        if (now - buzzerLast >= duration + 20 || buzzerStep == 0) {
+        if (now - buzzerLast >= duration + 50 || buzzerStep == 0) {
           tone(BUZZER_PIN, chirpFreqs[buzzerStep]);
           buzzerLast = now;
           buzzerStep++;
         }
-      } else if (now - buzzerLast >= duration + 20) {
+      } else if (now - buzzerLast >= duration) {
         noTone(BUZZER_PIN);
         activeBuzzerPattern = BUZZER_OFF;
         buzzerStep = 0;
@@ -527,14 +527,14 @@ void updateBuzzerAlarm() {
       break;
 
     case BUZZER_SOS: {
-      unsigned int sosDurations[9] = {150,150,150, 400,400,400, 150,150,150};
-      if (buzzerStep < 9) {
-        if (now - buzzerLast >= sosDurations[buzzerStep]) {
+      unsigned int sosDurations[10] = {0,150,150,150,400,400,400,150,150,150};
+      if (buzzerStep < 10) {
+        if (now - buzzerLast >= sosDurations[buzzerStep] + 150) {
           tone(BUZZER_PIN, 800, sosDurations[buzzerStep]);
           buzzerLast = now;
           buzzerStep++;
         }
-      } else if (now - buzzerLast >= 200) {
+      } else if (now - buzzerLast >= 150) {
         activeBuzzerPattern = BUZZER_OFF;
         buzzerStep = 0;
       }
