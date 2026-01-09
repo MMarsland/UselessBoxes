@@ -1,6 +1,6 @@
 # 🟢 Project: UselessBoxes
 
-A design for paired **UselessBoxes** that can be owned separately and used to interact between friends.
+A design for paired **UselessBoxes** that can be used to interact between friends.
 
 ---
 
@@ -15,7 +15,7 @@ A design for paired **UselessBoxes** that can be owned separately and used to in
 - **Author:** Michael Marsland
 - **Email:** mmarsland@mac.com
 - **Date:** 10/10/2025
-- **Revision:** 10/10/2025 - Alpha Dev
+- **Revision:** 01/09/2026 - Alpha Dev
 - **License:** Proprietary
 
 **Project Description:**
@@ -40,7 +40,7 @@ Currently using **Arduino Cloud** to set up the device as a "Thing" and a dashbo
 
 ### For Development:
 
-I am currently developing in VSCode using the PlatformIO extension. I started in the ArduinoCloud Editor, and then copied UselessBoxes.ino, thingProperties.h, and arduino_secrets.h from there into my local ArduinoIDE. Then I installed all the required libraries from the ArduinoIDE (ArduinoIoTCloud, etc...), then I was able to make a project in PlatformIO in VS code and copy over the files. The modifications you must make to get it building in PlatformIO are:
+I am currently developing in VSCode using the PlatformIO extension. I started in the ArduinoCloud Editor, and then copied UselessBoxes.ino, thingProperties.h, and arduino_secrets_*.h from there into my local ArduinoIDE. Then I installed all the required libraries from the ArduinoIDE (ArduinoIoTCloud, etc...), then I was able to make a project in PlatformIO in VS code and copy over the files. The modifications you must make to get it building in PlatformIO are:
 
 1. Add these lines to platformio.ini
    ```
@@ -50,7 +50,7 @@ I am currently developing in VSCode using the PlatformIO extension. I started in
 2. Change Useless_Boxes.ino to Useless_Boxes.cpp
 3. Write a "Useless_Boxes.h" with variable and function definitions (Ask an LLM for the header from the .cpp file)
 4. Include `<Arduino>` and "Useless_Boxes.h" in Useless_Boxes.cpp
-5. Include "arduino_secrets.h" in thingProperties.h
+5. Include "arduino_secrets_*.h" in thingProperties.h
 
 When running the code from this repository, all you should need to do is clone the repo, and then ensure you have Arduino ESP32 Boards by Arduino (2.0.18-arduino.5) installed in the ArduinoIDE, and the ArduinoIoTCloud by Arduino (2.8.0) library installed. Once these (And all dependencies) are installed in the ArduinoIDE, the project should build with PlatformIO in VSCode (Knock on Wood)
 
@@ -65,7 +65,7 @@ When running the code from this repository, all you should need to do is clone t
 - DC motor
 - SPDT switch (for direction)
 - Momentary push button (for stop)
-- 6V DC input
+- 6V DC input (Potentially not necessary if USB-C power proves to be stable enough (Version 2))
 - Jumper wires
 - Common GND for all components
 
@@ -143,13 +143,13 @@ Each color pin requires a **220Ω resistor**.
 | **R (Red)**      | 220Ω → Arduino**D7** | PWM capable   |
 | **G (Green)**    | 220Ω → Arduino**D6** | PWM capable   |
 | **B (Blue)**     | 220Ω → Arduino**D5** | PWM capable   |
-| **Common Anode** | GND                          | Shared ground |
+| **Common Cathode** | 3.3v                         | Shared power |
 
 ---
 
 ## 💻 Step 3: Load the Code
 
-Upload the code contained in this sketch onto your board via Arduino Cloud or Arduino IDE.
+Upload the code contained in this sketch onto your board via PlatformIO in VSCode
 
 ### 📂 Folder Structure
 
@@ -187,13 +187,13 @@ Email: mmarsland@mac.com
 |    | Button                                         |             | 1        |
 |    | Limit Switch                                   |             | 1        |
 |    | SPDT Switch                                    |             | 1        |
-|    | H-Bridge )                                     | L293DE      | 1        |
-|    | Barrel Jack Connector                          |             | 1        |
+|    | H-Bridge                                       | L293DE      | 1        |
+|    | Barrel Jack Connector (Optional)               |             | 1        |
 |    | Motor, Gear Box, and Armature from Useless Box |             | 1        |
-|    | 6V/0.83A Power Supply                          |             | 1        |
+|    | 6V/0.83A Power Supply (Optional)               |             | 1        |
 |    | Wires (Approx 25)                              |             | ~25      |
 |    | M2x6 Bolts & M2 Nuts                           |             | 6        |
-|    |                                                |             |          |
+|    | Custom 3D Printed Housing                      |             | 1        |
 |    |                                                |             |          |
 |    |                                                |             |          |
 
@@ -221,71 +221,24 @@ It will highly simplify the steps required to get a functioning system running.
 And it will be free for up to two devices and 5 variables per device.
 This should be enough to control the motors and even a few settings.
 I can also determine a way to adjust settings on the device (A button perhaps and detailed procedures).
-I can upgrade from Arduino Cloud to a different free option in the future such as using my website in V2.
-
-~~#### Choose a Frontend Dashboard Library~~
-~~- If using your own website, select a library for real-time dashboards:~~
-~~- Examples: Chart.js, D3.js, React + Recharts, or Vue + ECharts~~
-~~- Ensure compatibility with live updates and WebSocket or REST API communication~~
-
-~~#### Plan Website Architecture (Assuming Website)~~
-~~- Define:~~
-~~- Backend (Node.js / Express / Firebase Functions)~~
-~~- Database (Cloud Firestore, MySQL, or PostgreSQL)~~
-~~- Frontend (Dashboard, user interface)~~
-~~- API endpoints for Arduino devices~~
-~~- Authentication flow (Firebase Auth, JWT tokens)~~
-
-~~#### Set Up Device Communication~~
-~~- Establish communication between Arduino Nano ESP32 and website backend~~
-~~- Options: HTTP POST, WebSocket, MQTT (via your own broker)~~
-~~- Test sending simple sensor or motor state data~~
-~~- Test sending commands / setting updates to the devices~~
-
-~~#### Ensure Proper Device Authentication~~
-~~- Assign unique device IDs or secrets~~
-~~- Implement secure authentication when Arduino connects to your backend~~
-~~- Prevent unauthorized devices from sending or receiving data~~
-
-~~#### Set Up Database on Website~~
-~~- Store device states, logs, and user data~~
-~~- Recommended options:~~
-~~- Firebase Firestore for simplicity~~
-~~- MySQL/PostgreSQL if using Node.js backend~~
-~~- Define schema for:~~
-~~- Devices~~
-~~- Motor state~~
-~~- Dashboard data~~
-~~- Users~~
-
-~~#### Build the Intercommunication Dashboard~~
-~~- Display real-time motor status and device states~~
-~~- Allow manual control of motors (optional)~~
-~~- Include live logs for troubleshooting~~
-
-~~#### Add Firebase Authentication for Dashboard Access~~
-~~- Restrict dashboard access to yourself and your friend~~
-~~- Options:~~
-~~- Email/password login~~
-~~- Google Sign-In~~
-~~- Integrate auth into your frontend dashboard~~
+I can upgrade from Arduino Cloud to a different free option in the future such as using my website or a serverless implementation in V2.
 
 #### Ensure Interdevice Communication and Functionality
 
-- Test interactions between paired UselessBoxes
-- Verify:
-  - State changes propagate correctly
-  - Motors respond as expected
-  - Dashboard reflects real-time updates
+* [X] Test interactions between paired UselessBoxes
+* [X] Verify:
+  * [X] State changes propagate correctly
+  * [X] Motors respond as expected
+  * [X] Dashboard reflects real-time updates
 
 ### ⚙️ HARDWARE
 
 #### Design Hardware
 
-- Will need to decide on final wiring, how will the wires connect, where/how will the eletronics be seated
-- Prototype and design 3D printed housing
-- Ensure components can fit and function
-- Make design simple, and practical for desk use
+* [X] Will need to decide on final wiring, how will the wires connect, where/how will the eletronics be seated
+* [X] Prototype and design 3D printed housing
+* [X] Ensure components can fit and function
+* [X] Make design simple, and practical for desk use
 
 #### Solder Components
 
@@ -312,29 +265,20 @@ I can upgrade from Arduino Cloud to a different free option in the future such a
 
 #### Finalize Hardware
 
-- Secure all components in the box
-- Ensure wiring is neat and safe
-- Test full functionality before duplicating
+* [X] Secure all components in the box
+* [X] Ensure wiring is neat and safe
+* [X] Test full functionality before duplicating
 
 #### Build the Second Box
 
-- Replicate hardware and software setup
-- Connect to the same platform
-- Test intercommunication between the two boxes
+* [] Replicate hardware and software setup
+* [] Connect to the same platform
+* [] Test intercommunication between the two boxes
 
 #### Deployment Features
 
-- Setup Over-The-Air updates so the software can be modified
-- Setup wifi connection process so that devices can be easily set up
-
-### Current TODO
-
-- Update Box Design
-  - Adjust Arm Alignment
-  - Modify Printing Orientation to make the back better
+* [] (Optional) Setup Over-The-Air updates so the software can be modified
+* []Setup wifi connection process so that devices can be easily set up
 
 ##### ✅ Notes
 
-- Iteratively test hardware and software at each stage
-- Prioritize secure authentication and device identification
-- Document wiring, code, and backend API endpoints for reproducibility
