@@ -1,5 +1,5 @@
 .vscode
-arduino_secrets.h
+arduino_secrets_*.h
 sketch.json
 
 .pio

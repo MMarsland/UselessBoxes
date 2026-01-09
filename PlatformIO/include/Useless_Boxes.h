@@ -1,40 +1,48 @@
 #ifndef USELESS_BOXES_H
 #define USELESS_BOXES_H
 
-// ===== Pin assignments =====
-extern const int IN1;
-extern const int IN2;
-extern const int EN1;
-extern const int RGB_R;
-extern const int RGB_G;
-extern const int RGB_B;
-extern const int SWITCH_PIN;
-extern const int LIMIT_PIN;
-extern const int BUTTON_PIN;
-extern const int BUZZER_PIN;
+// ------------------------------------------------------------------
+// Hardware pin mappings — change here to remap pins for your board
+// ------------------------------------------------------------------
+constexpr int EN1 = 2;           // Motor enable (PWM capable)
+constexpr int IN1 = 3;           // Motor direction A
+constexpr int IN2 = 4;           // Motor direction B
+constexpr int RGB_R = 7;         // LED Red
+constexpr int RGB_G = 5;         // LED Green
+constexpr int RGB_B = 6;         // LED Blue
+constexpr int SWITCH_PIN = 8;    // SPDT switch
+constexpr int LIMIT_PIN = 9;     // Limit Switch
+constexpr int BUTTON_PIN = 10;   // Settings button
+constexpr int BUZZER_PIN = 11;   // Buzzer
 
-// ===== SETTINGS BUTTON =====
-extern const unsigned long LONG_PRESS_TIME;
-extern const unsigned long DEBOUNCE_TIME;
+// ------------------------------------------------------------------
+// Configurable defaults (change these compile-time defaults to tune
+// product defaults; runtime values are initialized from these)
+// ------------------------------------------------------------------
+constexpr unsigned long DEFAULT_LONG_PRESS_TIME = 1000;   // ms  // Adjustable
+constexpr unsigned long DEFAULT_DEBOUNCE_TIME   = 50;     // ms  // Adjustable
+constexpr unsigned long DEFAULT_MENU_TIMEOUT_MS = 30000; // ms  // Adjustable
+constexpr unsigned long DEFAULT_MOTOR_UPDATE_INTERVAL = 50; // ms // Adjustable
+constexpr int RGB_UPDATE_INTERVAL = 20; // ms // Adjustable
 
-// Button state tracking
-extern bool settingsButtonState;
-extern bool lastSettingsButtonState;
-extern unsigned long pressedTime;
-extern unsigned long releasedTime;
-extern bool longPressActive;
-extern unsigned long lastDebounceTime;
-extern int shortPressCount;
-extern int longPressCount;
-extern int lastShortPressCount;
-extern int lastLongPressCount;
+constexpr int DEFAULT_RGB_BRIGHTNESS_PERCENTAGE = 100; // % // Setting
+constexpr int DEFAULT_BUZZER_VOLUME_PERCENTAGE = 100; // % // Setting
 
-// ===== MENU SYSTEM =====
-extern int menuIndex;
-extern int totalMenus;
-extern bool inSubMenu;
-extern const unsigned long MENU_TIMEOUT_MS;
-extern unsigned long lastInteractionTime;
+// ------------------------------------------------------------------
+// Runtime-configurable settings (modifiable during development)
+// Use the setters below to ensure side-effects are applied.
+// ------------------------------------------------------------------
+extern unsigned long LONG_PRESS_TIME;
+extern unsigned long DEBOUNCE_TIME;
+extern unsigned long MENU_TIMEOUT_MS;
+extern unsigned long MOTOR_UPDATE_INTERVAL;
+extern int rgb_brightness_percentage;
+// Setter APIs (validate / apply side-effects)
+void setLongPressTime(unsigned long ms);
+void setDebounceTime(unsigned long ms);
+void setMenuTimeout(unsigned long ms);
+void setMotorUpdateInterval(unsigned long ms);
+void setRGBBrightness(int percent);
 
 // Menu structure
 struct MenuItem {
@@ -50,25 +58,9 @@ void handleSerialMenu();
 void showMenu();
 
 // Individual menu functions
-void showMotorMode();
-void adjustMotorMode();
-void confirmMotorMode();
-
-void showBrightness();
-void adjustBrightness();
-void confirmBrightness();
-
-void showActiveBox();
-void adjustActiveBox();
-void confirmActiveBox();
-
-void showRGB();
-void adjustRGB();
-void confirmRGB();
-
-void showBuzzer();
-void adjustBuzzer();
-void confirmBuzzer();
+void showRGBBrightness();
+void adjustRGBBrightness();
+void confirmRGBBrightness();
 
 // ===== RGB LED CONTROL =====
 enum RGBMode {
@@ -82,13 +74,12 @@ enum RGBMode {
   RGB_MODE_COUNT
 };
 
-int currentRGBMode = RGB_RAINBOW;
-unsigned long lastRGBAnimation = 0;
-int rainbowPos = 0;
-int breathValue = 0;
-int breathDir = 1;
-
-const int RGB_UPDATE_INTERVAL = 20; // ms
+extern int led_brightness_percentage; // Setting
+extern int currentRGBMode;
+extern unsigned long lastRGBAnimation;
+extern int rainbowPos;
+extern int breathValue;
+extern int breathDir;
 
 void setRGB(uint8_t r, uint8_t g, uint8_t b);
 void applyRGBMode();
@@ -104,34 +95,62 @@ enum BuzzerPattern {
   BUZZER_PATTERN_COUNT
 };
 
-int requestedBuzzerPattern = BUZZER_OFF; // updated by menu immediately
-int activeBuzzerPattern = BUZZER_SOS;    // only updated on "confirm" (long press)
-bool buzzerState = false;           // on/off state for looping patterns
-unsigned long buzzerLast = 0;       // last toggle time
-unsigned int buzzerStep = 0;        // step in sequence
-const unsigned long BUZZER_INTERVAL = 250; // ms
+extern int requestedBuzzerPattern; // updated by menu immediately
+extern int currentBuzzerPattern;    // applied on confirm
+extern bool buzzerState;           // internal on/off used by loops
+extern unsigned long buzzerLast;   // last toggle time
+extern unsigned int buzzerStep;    // step in sequence
+
+constexpr unsigned long BUZZER_INTERVAL = 250; // ms
 
 void stopBuzzer();
 void confirmBuzzerPattern();
 void updateBuzzerAlarm();
 
+// Settings for Active/Inactive behaviors (persisted presets)
+extern int activeRGBSetting;    // RGB mode when this box is active
+extern int inactiveRGBSetting;  // RGB mode when this box is inactive
+extern int activeBuzzerSetting;   // buzzer pattern to play when active
+extern int inactiveBuzzerSetting; // buzzer pattern to play when inactive
+extern int buzzer_volume_percentage; // buzzer volume (0-100)
+
+// Setter APIs for Active/Inactive presets
+void setActiveRGBSetting(int mode);
+void setInactiveRGBSetting(int mode);
+void setActiveBuzzerSetting(int pattern);
+void setInactiveBuzzerSetting(int pattern);
+void setBuzzerVolume(int percent);
+
+// Menu handlers for Active/Inactive presets
+void showActiveRGB();
+void adjustActiveRGB();
+void confirmActiveRGB();
+
+void showInactiveRGB();
+void adjustInactiveRGB();
+void confirmInactiveRGB();
+
+void showActiveBuzzerSetting();
+void adjustActiveBuzzerSetting();
+void confirmActiveBuzzerSetting();
+
+void showInactiveBuzzerSetting();
+void adjustInactiveBuzzerSetting();
+void confirmInactiveBuzzerSetting();
+
+void showBuzzerVolume();
+void adjustBuzzerVolume();
+void confirmBuzzerVolume();
+
 
 // ===== MOTOR CONTROL =====
-extern bool switch_forward;
-extern bool button_pressed;
-extern bool motor_forward;
-extern bool motor_enabled;
-
+// Motor internal state is kept private to the implementation (.cpp)
 void handleMotorControl();
 void modifyMotorState(bool switchState, bool buttonState);
 
-// ===== BOARD LED CONTROL =====
-extern bool led_on;
-extern int led_brightness_percentage;
-void adjustLED();
-
 // ===== ACTIVE BOX =====
 extern String active_box;
+extern bool box_active; // true when this physical box is currently "active"
 
 void setActiveBox(String box);
 void onActiveBoxChange();
