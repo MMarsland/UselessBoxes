@@ -2,18 +2,11 @@
 #define USELESS_BOXES_H
 
 // ------------------------------------------------------------------
-// Hardware pin mappings — change here to remap pins for your board
+// Hardware pin mappings — supplied by include/board_pins.h
+// Select the active mapping by setting a build flag (e.g. -DBOARD_PINS_MICHAEL)
+// or by providing your own `include/board_pins.h` in the project.
 // ------------------------------------------------------------------
-constexpr int EN1 = 2;           // Motor enable (PWM capable)
-constexpr int IN1 = 3;           // Motor direction A
-constexpr int IN2 = 4;           // Motor direction B
-constexpr int RGB_R = 7;         // LED Red
-constexpr int RGB_G = 5;         // LED Green
-constexpr int RGB_B = 6;         // LED Blue
-constexpr int SWITCH_PIN = 8;    // SPDT switch
-constexpr int LIMIT_PIN = 9;     // Limit Switch
-constexpr int BUTTON_PIN = 10;   // Settings button
-constexpr int BUZZER_PIN = 11;   // Buzzer
+#include "board_pins.h"
 
 // ------------------------------------------------------------------
 // Configurable defaults (change these compile-time defaults to tune
@@ -27,6 +20,13 @@ constexpr int RGB_UPDATE_INTERVAL = 20; // ms // Adjustable
 
 constexpr int DEFAULT_RGB_BRIGHTNESS_PERCENTAGE = 100; // % // Setting
 constexpr int DEFAULT_BUZZER_VOLUME_PERCENTAGE = 100; // % // Setting
+constexpr int DEFAULT_MOTOR_SPEED_PERCENTAGE = 100; // % // Motor speed (0-100)
+
+// Motor soft-start configuration
+constexpr int MOTOR_MIN_DUTY_CYCLE = 10;  // Minimum PWM duty (out of 255) to keep motor running smoothly (~35%)
+constexpr int MOTOR_SOFT_START_DURATION = 150; // ms - duration to apply full power during startup
+// Note: During soft-start, motor uses FULL POWER (255) to overcome static friction, then ramps down to target speed
+constexpr int MOTOR_SOFT_START_DUTY = 200; // Unused - kept for reference (we use 255 = full power)
 
 // ------------------------------------------------------------------
 // Runtime-configurable settings (modifiable during development)
@@ -74,7 +74,7 @@ enum RGBMode {
   RGB_MODE_COUNT
 };
 
-extern int led_brightness_percentage; // Setting
+// Board on-board status LED not currently configurable — always off
 extern int currentRGBMode;
 extern unsigned long lastRGBAnimation;
 extern int rainbowPos;
@@ -95,8 +95,7 @@ enum BuzzerPattern {
   BUZZER_PATTERN_COUNT
 };
 
-extern int requestedBuzzerPattern; // updated by menu immediately
-extern int currentBuzzerPattern;    // applied on confirm
+extern int currentBuzzerPattern;    // playback state for active buzzer pattern (played by presets)
 extern bool buzzerState;           // internal on/off used by loops
 extern unsigned long buzzerLast;   // last toggle time
 extern unsigned int buzzerStep;    // step in sequence
@@ -104,7 +103,6 @@ extern unsigned int buzzerStep;    // step in sequence
 constexpr unsigned long BUZZER_INTERVAL = 250; // ms
 
 void stopBuzzer();
-void confirmBuzzerPattern();
 void updateBuzzerAlarm();
 
 // Settings for Active/Inactive behaviors (persisted presets)
@@ -145,12 +143,20 @@ void confirmBuzzerVolume();
 
 // ===== MOTOR CONTROL =====
 // Motor internal state is kept private to the implementation (.cpp)
-void handleMotorControl();
+void handleSwitchDetection();
 void modifyMotorState(bool switchState, bool buttonState);
+
+// Motor speed control (0-100%) — setter persists and applies
+extern int motor_speed_percent;
+void setMotorSpeed(int percent);
+
+// Menu handlers for motor speed
+void showMotorSpeed();
+void adjustMotorSpeed();
+void confirmMotorSpeed();
 
 // ===== ACTIVE BOX =====
 extern String active_box;
-extern bool box_active; // true when this physical box is currently "active"
 
 void setActiveBox(String box);
 void onActiveBoxChange();

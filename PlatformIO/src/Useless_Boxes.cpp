@@ -48,15 +48,12 @@ int activeBuzzerSetting = BUZZER_SOS;
 int inactiveBuzzerSetting = BUZZER_OFF;
 int buzzer_volume_percentage = DEFAULT_BUZZER_VOLUME_PERCENTAGE; // % Setting
 int rgb_brightness_percentage = DEFAULT_RGB_BRIGHTNESS_PERCENTAGE; // % Setting
-
-// Track whether this physical box is currently considered "active"
-bool box_active = false; // exported via header `extern bool box_active`
+int motor_speed_percent = DEFAULT_MOTOR_SPEED_PERCENTAGE; // % Setting (0-100)
 
 // ------------------------------------------------------------------
 // Buzzer state
 // ------------------------------------------------------------------
-int requestedBuzzerPattern = BUZZER_OFF; // updated by menu immediately
-int currentBuzzerPattern = BUZZER_SOS;    // only updated on "confirm"
+int currentBuzzerPattern = BUZZER_SOS;    // active buzzer pattern playback state
 bool buzzerState = false;           // on/off state for looping patterns
 unsigned long buzzerLast = 0;       // last toggle time
 unsigned int buzzerStep = 0;        // step in sequence
@@ -91,6 +88,11 @@ namespace {
   bool motor_forward = true;
   bool motor_enabled = true;
   bool stateChanged = false;
+  
+  // Soft-start state tracking
+  unsigned long motorStartTime = 0;
+  bool motorIsStarting = false;
+  int lastMotorDirection = 0; // 1=forward, -1=reverse, 0=stopped
 }
 
 // Preferences (non-volatile storage) instance
@@ -142,12 +144,43 @@ void setBuzzerVolume(int percent) {
   prefs.putInt("buzzer_vol", buzzer_volume_percentage);
 }
 
+// Helper function to calculate duty cycle with minimum threshold and soft-start
+// Maps 0-100% speed setting to min_duty-255 range, ensuring motor can always start
+static int calculateMotorDuty(int speedPercent, bool isStarting) {
+  if (speedPercent <= 0) return 0;
+  
+  // During soft-start phase, use FULL power to overcome static friction
+  // This gives maximum torque to break free from static friction
+  if (isStarting) {
+    return 255;  // Full power during startup
+  }
+  
+  // After soft-start, ramp down to target speed
+  // Map 0-100% to min_duty-255 range
+  // This ensures even at low settings, motor gets minimum power to keep running
+  int dutyRange = 255 - MOTOR_MIN_DUTY_CYCLE; // Available range above minimum
+  int duty = MOTOR_MIN_DUTY_CYCLE + (speedPercent * dutyRange) / 100;
+  
+  // Clamp to valid range
+  if (duty < MOTOR_MIN_DUTY_CYCLE) duty = MOTOR_MIN_DUTY_CYCLE;
+  if (duty > 255) duty = 255;
+  
+  return duty;
+}
+
+void setMotorSpeed(int percent) {
+  if (percent < 0) percent = 0;
+  if (percent > 100) percent = 100;
+  motor_speed_percent = percent;
+  prefs.putInt("motor_speed", motor_speed_percent);
+  // Reapply motor state immediately with new speed (read current switch/limit state)
+  stateChanged = true;
+}
+
 // Load persisted settings (call during setup after prefs.begin())
 static void loadPersistentSettings() {
   // read stored values or keep current defaults
   currentRGBMode = (RGBMode)prefs.getInt("rgb_mode", currentRGBMode);
-  requestedBuzzerPattern = prefs.getInt("buzzer_requested", requestedBuzzerPattern);
-  currentBuzzerPattern = prefs.getInt("buzzer_active", currentBuzzerPattern);
   // Active/Inactive presets
   activeRGBSetting = (RGBMode)prefs.getInt("active_rgb", activeRGBSetting);
   inactiveRGBSetting = (RGBMode)prefs.getInt("inactive_rgb", inactiveRGBSetting);
@@ -155,6 +188,8 @@ static void loadPersistentSettings() {
   activeBuzzerSetting = prefs.getInt("active_buzzer", activeBuzzerSetting);
   inactiveBuzzerSetting = prefs.getInt("inactive_buzzer", inactiveBuzzerSetting);
   buzzer_volume_percentage = prefs.getInt("buzzer_vol", buzzer_volume_percentage);
+  // Motor speed
+  motor_speed_percent = prefs.getInt("motor_speed", motor_speed_percent);
   // initialize buzzer runtime state
   buzzerStep = 0;
   buzzerState = false;
@@ -192,10 +227,13 @@ void setup() {
   prefs.begin("useless_box", false);
   loadPersistentSettings();
 
-  // Set the Board LED as outputs
+  // Set the Board LED as outputs (kept OFF — not configurable)
   pinMode(LED_RED, OUTPUT);
   pinMode(LED_BLUE, OUTPUT);
   pinMode(LED_GREEN, OUTPUT);
+  analogWrite(LED_RED, 255);
+  analogWrite(LED_GREEN, 255);
+  analogWrite(LED_BLUE, 255);
 
   // Set the RGB LED as outputs
   pinMode(RGB_R, OUTPUT);
@@ -240,7 +278,7 @@ void loop() {
     // Run motor control every 50 ms (non-blocking)
     if (millis() - lastMotorUpdate >= MOTOR_UPDATE_INTERVAL) {
       lastMotorUpdate = millis();
-      handleMotorControl();
+      handleSwitchDetection();
     }
 
     updateAnimations();   // RGB effects (rainbow, pulse, etc)
@@ -314,7 +352,8 @@ MenuItem menuItems[] = {
   { "RGB Brightness",       showRGBBrightness,       adjustRGBBrightness,       confirmRGBBrightness },
   { "Active Buzzer",        showActiveBuzzerSetting, adjustActiveBuzzerSetting, confirmActiveBuzzerSetting },
   { "Inactive Buzzer",      showInactiveBuzzerSetting, adjustInactiveBuzzerSetting, confirmInactiveBuzzerSetting },
-  { "Buzzer Volume",        showBuzzerVolume,        adjustBuzzerVolume,        confirmBuzzerVolume }
+  { "Buzzer Volume",        showBuzzerVolume,        adjustBuzzerVolume,        confirmBuzzerVolume },
+  { "Motor Speed",          showMotorSpeed,          adjustMotorSpeed,          confirmMotorSpeed }
 };
 
 int totalMenus = sizeof(menuItems) / sizeof(MenuItem);
@@ -461,7 +500,20 @@ void adjustActiveBuzzerSetting() {
   setActiveBuzzerSetting(activeBuzzerSetting);
   showActiveBuzzerSetting();
 }
-void confirmActiveBuzzerSetting() { showActiveBuzzerSetting(); }
+// Play the given buzzer pattern once (non-blocking)
+static void triggerBuzzerPattern(int pattern) {
+  currentBuzzerPattern = pattern;
+  buzzerStep = 0;
+  buzzerState = false;
+  buzzerLast = millis();
+  noTone(BUZZER_PIN);
+}
+
+void confirmActiveBuzzerSetting() {
+  // user saved a new active buzzer selection — play it once as confirmation
+  triggerBuzzerPattern(activeBuzzerSetting);
+  showActiveBuzzerSetting();
+}
 
 void showInactiveBuzzerSetting() {
   Serial.print("Inactive Buzzer: ");
@@ -479,7 +531,11 @@ void adjustInactiveBuzzerSetting() {
   setInactiveBuzzerSetting(inactiveBuzzerSetting);
   showInactiveBuzzerSetting();
 }
-void confirmInactiveBuzzerSetting() { showInactiveBuzzerSetting(); }
+void confirmInactiveBuzzerSetting() {
+  // user saved a new inactive buzzer selection — play it once as confirmation
+  triggerBuzzerPattern(inactiveBuzzerSetting);
+  showInactiveBuzzerSetting();
+}
 
 // ---------------- BUZZER VOLUME ----------------
 void showBuzzerVolume() {
@@ -494,6 +550,21 @@ void adjustBuzzerVolume() {
   showBuzzerVolume();
 }
 void confirmBuzzerVolume() { showBuzzerVolume(); }
+
+// ---------------- MOTOR SPEED ----------------
+void showMotorSpeed() {
+  Serial.print("Motor Speed: ");
+  Serial.print(motor_speed_percent);
+  Serial.println("%");
+}
+void adjustMotorSpeed() {
+  int next = motor_speed_percent + 10;
+  if (next > 100) next = 0;
+  setMotorSpeed(next);
+  showMotorSpeed();
+}
+void confirmMotorSpeed() { showMotorSpeed(); }
+
 // ==================================================================
 
 // === RGB LED CONTROL ===============================================
@@ -566,15 +637,6 @@ void stopBuzzer() {
   noTone(BUZZER_PIN);
 }
 
-void confirmBuzzerPattern() {
-  // Called when long press confirms selection
-  currentBuzzerPattern = requestedBuzzerPattern;
-  buzzerStep = 0;
-  buzzerState = false;
-  buzzerLast = millis();
-  noTone(BUZZER_PIN);
-  prefs.putInt("buzzer_active", currentBuzzerPattern);
-}
 // Non-blocking update (call inside loop)
 void updateBuzzerAlarm() {
   unsigned long now = millis();
@@ -644,32 +706,45 @@ void updateBuzzerAlarm() {
 // ==================================================================
 // === MOTOR CONTROL HANDLER ========================================
 // ==================================================================
-void handleMotorControl() {
+void handleSwitchDetection() {
   bool switchState = digitalRead(SWITCH_PIN);
   bool limitState = digitalRead(LIMIT_PIN);
-
 
   if (switchState != switch_forward) {
     Serial.print("Switch changed to: ");
     Serial.println(switchState == HIGH ? "FORWARD" : "REVERSE");
     switch_forward = switchState;
     stateChanged = true;
-    // If the physical switch was turned ON (forward), declare this box active
-    if (switchState == HIGH && box_active == false) {
+
+    if (switchState == HIGH) {
+      // Switch turned ON: always claim active and play active buzzer + LED
       Serial.println("⚡ Switch ON — claiming this box as Active.");
+      currentRGBMode = activeRGBSetting;
+      applyRGBMode();
+      triggerBuzzerPattern(activeBuzzerSetting);
+      // Broadcast active status and indicate this originated from the switch
       setActiveBox(BOX_NAME);
+    }
+    // Switch turned OFF: if we were active, release claim without running the
+    // inactive buzzer (local switch shouldn't cause the inactive buzzer)
+    else if (switchState == LOW && active_box == BOX_NAME) {
+      Serial.println("⚡ Switch OFF — releasing this box as Active (no buzzer).");
+      currentRGBMode = inactiveRGBSetting;
+      applyRGBMode();
+      setActiveBox("NONE");
     }
   }
 
   if (limitState != limit_pressed) {
     Serial.print("Limit changed to: ");
-    Serial.println(limitState == LOW ? "PRESSED" : "RELEASED");
+    Serial.println(limitState == LOW ? "RELEASED" : "PRESSED");
     limit_pressed = limitState;
     stateChanged = true;
   }
 
   if (stateChanged) {
     modifyMotorState(switchState, limitState);
+    stateChanged = false;
   }
 }
 
@@ -677,46 +752,83 @@ void handleMotorControl() {
 // === MOTOR BEHAVIOR ===============================================
 // ==================================================================
 void modifyMotorState(bool switchState, bool limitState) {
-  if (switchState == HIGH && box_active == false) {
+  Serial.println("Modifying motor state...");
+  
+  // Determine current motor direction (1=forward, -1=reverse, 0=stopped)
+  int currentDirection = 0;
+  bool motorShouldRun = false;
+  
+  if (switchState == HIGH && active_box != BOX_NAME) {
     motor_forward = true;
-    // Forward direction — button ignored
+    motorShouldRun = true;
+    currentDirection = 1;
+    // Forward direction — limit switch ignored
+    Serial.println("Motor moving FORWARD.");
+    Serial.print("Motor Pins: ");
+    Serial.println("EN1=" + String(EN1) + ", IN1=" + String(IN1) + ", IN2=" + String(IN2));
     digitalWrite(IN1, HIGH);
     digitalWrite(IN2, LOW);
-    analogWrite(EN1, (motor_enabled ? 255 : 0));
-
+  } else if (limitState == LOW) {
+    motor_forward = false;
+    motorShouldRun = true;
+    currentDirection = -1;
+    // Reverse direction
+    Serial.println("Reverse Motor.");
+    digitalWrite(IN1, LOW);
+    digitalWrite(IN2, HIGH);
   } else {
     motor_forward = false;
-    // Reverse direction — check button
-    if (limitState == HIGH) {
-      // Stop motor in reverse
-      digitalWrite(IN1, LOW);
-      digitalWrite(IN2, LOW);
-      analogWrite(EN1, (motor_enabled ? 255 : 0));
-    } else {
-      // Reverse normally
-      digitalWrite(IN1, LOW);
-      digitalWrite(IN2, HIGH);
-      analogWrite(EN1, (motor_enabled ? 255 : 0));
-    }
+    motorShouldRun = false;
+    currentDirection = 0;
+    // Stop motor (limit pressed in reverse, or switch OFF)
+    Serial.println("Stop Motor (limit pressed or switch OFF).");
+    digitalWrite(IN1, LOW);
+    digitalWrite(IN2, LOW);
+    // Cancel soft-start when stopping
+    motorIsStarting = false;
+    motorStartTime = 0;
+  }
+  
+  // Detect if motor direction changed (triggers soft-start)
+  if (motorShouldRun && currentDirection != 0 && currentDirection != lastMotorDirection) {
+    // Motor started or changed direction - begin soft-start at full power
+    motorIsStarting = true;
+    motorStartTime = millis();
+    Serial.println("Motor start detected - applying FULL POWER to overcome static friction.");
+  }
+  
+  lastMotorDirection = currentDirection;
+  
+  // Check if soft-start phase has completed
+  if (motorIsStarting && (millis() - motorStartTime >= MOTOR_SOFT_START_DURATION)) {
+    motorIsStarting = false;
+    Serial.println("Soft-start complete - motor moving, ramping down to target speed.");
+  }
+  
+  // Calculate duty cycle with soft-start consideration
+  int duty = calculateMotorDuty(motor_speed_percent, motorIsStarting);
+  
+  // Apply PWM to enable pin
+  analogWrite(EN1, (motor_enabled && motorShouldRun) ? duty : 0);
+  
+  Serial.print("Duty cycle: ");
+  Serial.print(duty);
+  Serial.print("/255 (");
+  Serial.print((duty * 100) / 255);
+  Serial.println("%)");
+  if (motorIsStarting) {
+    Serial.println("  [FULL POWER startup phase - will ramp down after " + String(MOTOR_SOFT_START_DURATION) + "ms]");
   }
 }
 
 
-// ==================================================================
-// === BOARD LED CONTROL ============================================
-// ==================================================================
-void adjustBoardLED() {
-    analogWrite(LED_RED, 255-255*led_brightness_percentage/100);
-    analogWrite(LED_GREEN, 255-255*led_brightness_percentage/100);
-    analogWrite(LED_BLUE, 255-255*led_brightness_percentage/100);
-}
 
 // ==================================================================
 // === ACTIVE BOX SETTER ============================================
 // ==================================================================
+
 void setActiveBox(String box) {
   active_box = box;
-  onActiveBoxChange();
 }
 
 /*
@@ -727,24 +839,17 @@ void onActiveBoxChange()  {
   Serial.print("Active Box Changed to: ");
   Serial.println(active_box);
 
-  // Add your code here to act upon ActiveBox change
-  if (active_box == BOX_NAME && box_active == false) {
-    // Apply "active" presets
+  if (active_box == BOX_NAME) {
     currentRGBMode = activeRGBSetting;
     applyRGBMode();
-    currentBuzzerPattern = activeBuzzerSetting;
-    buzzerStep = 0;
-    buzzerLast = millis();
-  } else if (active_box != BOX_NAME && box_active == true) {
-    // Apply "inactive" presets
+  } else { // The active_box is set to the other
+    // Should only be called when active_box is adjusted through ArduinoCloud
+    bool switchState = digitalRead(SWITCH_PIN);
+    if (switchState == HIGH) { // Another box claimed active while our switch is ON
+      triggerBuzzerPattern(inactiveBuzzerSetting);
+      stateChanged = true; // This causes modifyMotorState() to run on the next loop
+    }
     currentRGBMode = inactiveRGBSetting;
     applyRGBMode();
-    currentBuzzerPattern = inactiveBuzzerSetting;
-    buzzerStep = 0;
-    buzzerLast = millis();
-
   }
-  
-  stateChanged = true;
-  box_active = (active_box == BOX_NAME);
 }

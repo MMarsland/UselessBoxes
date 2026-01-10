@@ -20,7 +20,7 @@ A design for paired **UselessBoxes** that can be used to interact between friend
 
 **Project Description:**
 
-The Useful Box project started a few years ago when my friend Trevor Johns gifted me a "Useless Box" for my birthday. A "Useless Box" is simply a small electro-mechanical device that sits on your desk and has a single switch on top. Upon flicking the switch, a small arm rises from the box to de-activate the switch, and then the cycle repeats.
+The Useless Box project started a few years ago when my friend Trevor Johns gifted me a "Useless Box" for my birthday. A "Useless Box" is simply a small electro-mechanical device that sits on your desk and has a single switch on top. Upon flicking the switch, a small arm rises from the box to de-activate the switch, and then the cycle repeats.
 
 This gift inspired the idea for a small IoT project where I could build Trevor and I each a similarly "Useless Box" for our desks except with the main change being, my switch would activate his arm to flick his switch off, and him turning his switch on would activate the arm on my box to turn my switch off.
 
@@ -138,11 +138,11 @@ When running the code from this repository, all you should need to do is clone t
 
 Each color pin requires a **220Ω resistor**.
 
-| LED Pin                | Connected To                 | Notes         |
-| ---------------------- | ---------------------------- | ------------- |
-| **R (Red)**      | 220Ω → Arduino**D7** | PWM capable   |
-| **G (Green)**    | 220Ω → Arduino**D6** | PWM capable   |
-| **B (Blue)**     | 220Ω → Arduino**D5** | PWM capable   |
+| LED Pin                  | Connected To                 | Notes        |
+| ------------------------ | ---------------------------- | ------------ |
+| **R (Red)**        | 220Ω → Arduino**D7** | PWM capable  |
+| **G (Green)**      | 220Ω → Arduino**D6** | PWM capable  |
+| **B (Blue)**       | 220Ω → Arduino**D5** | PWM capable  |
 | **Common Cathode** | 3.3v                         | Shared power |
 
 ---
@@ -278,7 +278,8 @@ I can upgrade from Arduino Cloud to a different free option in the future such a
 #### Deployment Features
 
 * [] (Optional) Setup Over-The-Air updates so the software can be modified
-* []Setup wifi connection process so that devices can be easily set up
+* [] Setup wifi connection process so that devices can be easily set up
 
 ##### ✅ Notes
 
+- Based on testing, it appears the motor can run on board USB-C power without crashing the board so the 6V barrel jack source could be dropped in Version 2 and the whole box could be powered solely with the USB-C cable.

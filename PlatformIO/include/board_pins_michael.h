@@ -1,0 +1,20 @@
+#pragma once
+// Pin mappings for MICHAEL board
+#ifndef BOARD_PINS_MICHAEL_H
+    #define BOARD_PINS_MICHAEL_H
+
+    // Box name (moved here from arduino_secrets)
+    #define BOX_NAME "MICHAEL"
+
+    constexpr int EN1 = 2;           // Motor enable (PWM capable)
+    constexpr int IN1 = 4;           // Motor direction A
+    constexpr int IN2 = 3;           // Motor direction B
+    constexpr int RGB_R = 7;         // LED Red
+    constexpr int RGB_G = 5;         // LED Green
+    constexpr int RGB_B = 6;         // LED Blue
+    constexpr int SWITCH_PIN = 8;    // SPDT switch
+    constexpr int LIMIT_PIN = 9;     // Limit Switch
+    constexpr int BUTTON_PIN = 10;   // Settings button
+    constexpr int BUZZER_PIN = 11;   // Buzzer
+
+#endif // BOARD_PINS_MICHAEL_H
