@@ -43,8 +43,8 @@ int breathDir = 1;
 
 // Active/Inactive presets (persisted)
 int activeRGBSetting = RGB_RAINBOW;
-int inactiveRGBSetting = RGB_OFF;
-int activeBuzzerSetting = BUZZER_SOS;
+int inactiveRGBSetting = RGB_SOLID_RED;
+int activeBuzzerSetting = BUZZER_OFF;
 int inactiveBuzzerSetting = BUZZER_OFF;
 int buzzer_volume_percentage = DEFAULT_BUZZER_VOLUME_PERCENTAGE; // % Setting
 int rgb_brightness_percentage = DEFAULT_RGB_BRIGHTNESS_PERCENTAGE; // % Setting
@@ -53,7 +53,7 @@ int motor_speed_percent = DEFAULT_MOTOR_SPEED_PERCENTAGE; // % Setting (0-100)
 // ------------------------------------------------------------------
 // Buzzer state
 // ------------------------------------------------------------------
-int currentBuzzerPattern = BUZZER_SOS;    // active buzzer pattern playback state
+int currentBuzzerPattern = BUZZER_OFF;    // active buzzer pattern playback state
 bool buzzerState = false;           // on/off state for looping patterns
 unsigned long buzzerLast = 0;       // last toggle time
 unsigned int buzzerStep = 0;        // step in sequence
@@ -93,6 +93,12 @@ namespace {
   unsigned long motorStartTime = 0;
   bool motorIsStarting = false;
   int lastMotorDirection = 0; // 1=forward, -1=reverse, 0=stopped
+  
+  // Software PWM state tracking
+  unsigned long lastPWMUpdate = 0;
+  unsigned long pwmCycleStart = 0;
+  bool pwmEnableState = false;
+  bool motorShouldRunPWM = false; // Should the motor run (direction determined by IN1/IN2)
 }
 
 // Preferences (non-volatile storage) instance
@@ -144,28 +150,30 @@ void setBuzzerVolume(int percent) {
   prefs.putInt("buzzer_vol", buzzer_volume_percentage);
 }
 
-// Helper function to calculate duty cycle with minimum threshold and soft-start
-// Maps 0-100% speed setting to min_duty-255 range, ensuring motor can always start
-static int calculateMotorDuty(int speedPercent, bool isStarting) {
+// Helper function to calculate effective speed percentage with soft-start
+// Returns effective speed percentage (0-100) for software PWM
+// NO minimum constraints - allows truly slow speeds with minimal on-time
+// Applies scaling to make lower speeds even slower (10% becomes ~1-2% actual)
+static int calculateEffectiveSpeed(int speedPercent, bool isStarting) {
   if (speedPercent <= 0) return 0;
   
-  // During soft-start phase, use FULL power to overcome static friction
-  // This gives maximum torque to break free from static friction
+  // During soft-start phase, use 100% (full power) to overcome static friction
   if (isStarting) {
-    return 255;  // Full power during startup
+    return 100;  // Full power during startup
   }
   
-  // After soft-start, ramp down to target speed
-  // Map 0-100% to min_duty-255 range
-  // This ensures even at low settings, motor gets minimum power to keep running
-  int dutyRange = 255 - MOTOR_MIN_DUTY_CYCLE; // Available range above minimum
-  int duty = MOTOR_MIN_DUTY_CYCLE + (speedPercent * dutyRange) / 100;
+  if (speedPercent > 100) return 100;
   
-  // Clamp to valid range
-  if (duty < MOTOR_MIN_DUTY_CYCLE) duty = MOTOR_MIN_DUTY_CYCLE;
-  if (duty > 255) duty = 255;
+  // Apply aggressive scaling to make lower speeds MUCH slower
+  // This makes 10% speed setting result in barely any motor movement
+  // Speeds below 20% are divided by 10: 10% -> 1%, 5% -> 0.5%, 1% -> 0.1%
+  if (speedPercent <= 20) {
+    return speedPercent / 10;  // 10% -> 1%, 5% -> 0.5%, 1% -> 0.1%
+  }
   
-  return duty;
+  // For speeds above 20%, use linear mapping (20% -> 2%, 100% -> 100%)
+  // Creates smooth transition from very slow to normal speeds
+  return 2 + ((speedPercent - 20) * 98) / 80;  // 20% -> 2%, 100% -> 100%
 }
 
 void setMotorSpeed(int percent) {
@@ -274,6 +282,9 @@ void setup() {
 void loop() {
     ArduinoCloud.update();
     handleSettingsButton();   // independent from motor
+  
+    // Update software PWM frequently (5ms intervals) for smooth motor control
+    updateMotorPWM();
   
     // Run motor control every 50 ms (non-blocking)
     if (millis() - lastMotorUpdate >= MOTOR_UPDATE_INTERVAL) {
@@ -805,23 +816,118 @@ void modifyMotorState(bool switchState, bool limitState) {
     Serial.println("Soft-start complete - motor moving, ramping down to target speed.");
   }
   
-  // Calculate duty cycle with soft-start consideration
-  int duty = calculateMotorDuty(motor_speed_percent, motorIsStarting);
+  // Set flag for software PWM (don't control enable pin here - that's done by updateMotorPWM)
+  motorShouldRunPWM = (motor_enabled && motorShouldRun);
   
-  // Apply PWM to enable pin
-  analogWrite(EN1, (motor_enabled && motorShouldRun) ? duty : 0);
+  // Reset PWM cycle when motor state changes
+  pwmCycleStart = millis();
+  pwmEnableState = false;
   
-  Serial.print("Duty cycle: ");
-  Serial.print(duty);
-  Serial.print("/255 (");
-  Serial.print((duty * 100) / 255);
-  Serial.println("%)");
+  // Calculate effective speed for logging
+  int effectiveSpeed = calculateEffectiveSpeed(motor_speed_percent, motorIsStarting);
+  Serial.print("Motor speed: ");
+  Serial.print(effectiveSpeed);
+  Serial.println("% (software PWM)");
   if (motorIsStarting) {
     Serial.println("  [FULL POWER startup phase - will ramp down after " + String(MOTOR_SOFT_START_DURATION) + "ms]");
   }
+  
+  // If motor should stop, immediately disable enable pin
+  if (!motorShouldRunPWM) {
+    digitalWrite(EN1, LOW);
+  }
 }
 
-
+// ==================================================================
+// === SOFTWARE PWM UPDATE ==========================================
+// ==================================================================
+// This function implements software PWM by toggling the enable pin
+// It should be called frequently (every 5-10ms) from the main loop
+void updateMotorPWM() {
+  unsigned long now = millis();
+  
+  // Only update at the specified interval
+  if (now - lastPWMUpdate < MOTOR_PWM_UPDATE_INTERVAL) {
+    return;
+  }
+  lastPWMUpdate = now;
+  
+  // If motor shouldn't run, keep enable pin LOW
+  if (!motorShouldRunPWM || !motor_enabled) {
+    digitalWrite(EN1, LOW);
+    pwmEnableState = false;
+    return;
+  }
+  
+  // Calculate effective speed percentage (with soft-start consideration)
+  int effectiveSpeed = calculateEffectiveSpeed(motor_speed_percent, motorIsStarting);
+  
+  // If speed is 0 or less, disable motor
+  if (effectiveSpeed <= 0) {
+    digitalWrite(EN1, LOW);
+    pwmEnableState = false;
+    return;
+  }
+  
+  // If speed is 100%, always keep enable pin HIGH
+  if (effectiveSpeed >= 100) {
+    digitalWrite(EN1, HIGH);
+    pwmEnableState = true;
+    return;
+  }
+  
+  // Calculate ON and OFF times within the PWM period
+  // For very slow speeds: tiny on-time, extremely long off-time
+  // With 5000ms period:
+  //   At 10%: onTime = 500ms, offTime = 4500ms (motor barely on)
+  //   At 5%: onTime = 250ms, offTime = 4750ms
+  //   At 1%: onTime = 50ms, offTime = 4950ms
+  //   At 0.1%: onTime = 5ms, offTime = 4995ms (almost nothing)
+  // NO minimum constraints - if calculation results in 0ms, motor stays off
+  unsigned long onTime = (MOTOR_PWM_PERIOD * effectiveSpeed) / 100;
+  
+  unsigned long offTime = MOTOR_PWM_PERIOD - onTime;
+  
+  // Safety check: ensure valid times
+  if (onTime > MOTOR_PWM_PERIOD) {
+    onTime = MOTOR_PWM_PERIOD;
+    offTime = 0;
+  }
+  
+  // Calculate position within current PWM cycle (0 to MOTOR_PWM_PERIOD-1)
+  unsigned long cyclePosition = (now - pwmCycleStart) % MOTOR_PWM_PERIOD;
+  
+  // Determine if enable pin should be HIGH or LOW based on position in cycle
+  // For very slow speeds: short pulse at start of cycle, then long pause
+  // cyclePosition 0 to onTime-1: HIGH (motor ON)
+  // cyclePosition onTime to MOTOR_PWM_PERIOD-1: LOW (motor OFF)
+  bool shouldBeHigh = (cyclePosition < onTime);
+  
+  // Only toggle if state needs to change (avoids unnecessary digitalWrite calls)
+  if (shouldBeHigh != pwmEnableState) {
+    pwmEnableState = shouldBeHigh;
+    digitalWrite(EN1, shouldBeHigh ? HIGH : LOW);
+    
+    // Debug output for slow speeds to verify PWM is working
+    if (effectiveSpeed <= 15) {
+      static unsigned long lastDebugTime = 0;
+      if (now - lastDebugTime > 2000) {  // Print debug every 2 seconds
+        lastDebugTime = now;
+        Serial.print("PWM: speed=");
+        Serial.print(effectiveSpeed);
+        Serial.print("%, onTime=");
+        Serial.print(onTime);
+        Serial.print("ms, offTime=");
+        Serial.print(offTime);
+        Serial.print("ms, period=");
+        Serial.print(MOTOR_PWM_PERIOD);
+        Serial.print("ms, duty=");
+        Serial.print((onTime * 100) / MOTOR_PWM_PERIOD);
+        Serial.println("%");
+      }
+    }
+  }
+}
 
 // ==================================================================
 // === ACTIVE BOX SETTER ============================================
