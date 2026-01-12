@@ -5,9 +5,9 @@
 #ifndef ARDUINO_SECRETS_H
     #define ARDUINO_SECRETS_H
 
-    #if defined(BOARD_PINS_TREVOR)
+    #if defined(BOARD_TREVOR)
         #include "arduino_secrets_trevor.h"
-    #elif defined(BOARD_PINS_MICHAEL)
+    #elif defined(BOARD_MICHAEL)
         #include "arduino_secrets_michael.h"
     #else
         // Default to MICHAEL

@@ -7,8 +7,8 @@
     #define BOX_NAME "MICHAEL"
 
     constexpr int EN1 = 2;           // Motor enable (PWM capable)
-    constexpr int IN1 = 4;           // Motor direction A
-    constexpr int IN2 = 3;           // Motor direction B
+    constexpr int IN1 = 3;           // Motor direction A
+    constexpr int IN2 = 4;           // Motor direction B
     constexpr int RGB_R = 7;         // LED Red
     constexpr int RGB_G = 5;         // LED Green
     constexpr int RGB_B = 6;         // LED Blue

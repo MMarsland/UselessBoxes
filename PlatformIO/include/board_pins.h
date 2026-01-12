@@ -5,9 +5,9 @@
 #ifndef BOARD_PINS_H
     #define BOARD_PINS_H
 
-    #if defined(BOARD_PINS_MICHAEL)
+    #if defined(BOARD_MICHAEL)
         #include "board_pins_michael.h"
-    #elif defined(BOARD_PINS_TREVOR)
+    #elif defined(BOARD_TREVOR)
         #include "board_pins_trevor.h"
     #else
         // Default to MICHAEL if no build flag provided
