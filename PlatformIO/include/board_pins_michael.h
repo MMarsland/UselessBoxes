@@ -9,9 +9,9 @@
     constexpr int EN1 = 2;           // Motor enable (PWM capable)
     constexpr int IN1 = 3;           // Motor direction A
     constexpr int IN2 = 4;           // Motor direction B
-    constexpr int RGB_R = 7;         // LED Red
-    constexpr int RGB_G = 5;         // LED Green
-    constexpr int RGB_B = 6;         // LED Blue
+    constexpr int RGB_R = 6;         // LED Red
+    constexpr int RGB_G = 7;         // LED Green
+    constexpr int RGB_B = 5;         // LED Blue
     constexpr int SWITCH_PIN = 8;    // SPDT switch
     constexpr int LIMIT_PIN = 9;     // Limit Switch
     constexpr int BUTTON_PIN = 10;   // Settings button

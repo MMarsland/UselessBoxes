@@ -3,7 +3,7 @@
 
 // ------------------------------------------------------------------
 // Hardware pin mappings — supplied by include/board_pins.h
-// Select the active mapping by setting a build flag (e.g. -DBOARD_PINS_MICHAEL)
+// Select the active mapping by setting a build flag (e.g. -DBOARD_MICHAEL)
 // or by providing your own `include/board_pins.h` in the project.
 // ------------------------------------------------------------------
 #include "board_pins.h"
@@ -19,21 +19,6 @@ constexpr unsigned long DEFAULT_MOTOR_UPDATE_INTERVAL = 50; // ms // Adjustable
 constexpr int RGB_UPDATE_INTERVAL = 20; // ms // Adjustable
 
 constexpr int DEFAULT_RGB_BRIGHTNESS_PERCENTAGE = 100; // % // Setting
-constexpr int DEFAULT_BUZZER_VOLUME_PERCENTAGE = 100; // % // Setting
-constexpr int DEFAULT_MOTOR_SPEED_PERCENTAGE = 100; // % // Motor speed (0-100)
-
-// Motor soft-start configuration
-constexpr int MOTOR_SOFT_START_DURATION = 150; // ms - duration to apply full power during startup
-// Note: During soft-start, motor uses FULL POWER (255) to overcome static friction, then ramps down to target speed
-
-// Software PWM configuration (for manual enable pin toggling)
-// Using a very long period (5000ms = 5 seconds) allows for extremely slow speeds
-// At 10% speed: 500ms ON, 4500ms OFF (motor barely on)
-// At 5% speed: 250ms ON, 4750ms OFF
-// At 1% speed: 50ms ON, 4950ms OFF
-// NO minimum constraints - motor can be on for just a few milliseconds
-constexpr unsigned long MOTOR_PWM_PERIOD = 5000; // ms - period for software PWM (5 seconds, allows extremely slow speeds)
-constexpr unsigned long MOTOR_PWM_UPDATE_INTERVAL = 1; // ms - how often we check/toggle the enable pin (1ms for maximum precision)
 
 // ------------------------------------------------------------------
 // Runtime-configurable settings (modifiable during development)
@@ -117,14 +102,12 @@ extern int activeRGBSetting;    // RGB mode when this box is active
 extern int inactiveRGBSetting;  // RGB mode when this box is inactive
 extern int activeBuzzerSetting;   // buzzer pattern to play when active
 extern int inactiveBuzzerSetting; // buzzer pattern to play when inactive
-extern int buzzer_volume_percentage; // buzzer volume (0-100)
 
 // Setter APIs for Active/Inactive presets
 void setActiveRGBSetting(int mode);
 void setInactiveRGBSetting(int mode);
 void setActiveBuzzerSetting(int pattern);
 void setInactiveBuzzerSetting(int pattern);
-void setBuzzerVolume(int percent);
 
 // Menu handlers for Active/Inactive presets
 void showActiveRGB();
@@ -143,25 +126,10 @@ void showInactiveBuzzerSetting();
 void adjustInactiveBuzzerSetting();
 void confirmInactiveBuzzerSetting();
 
-void showBuzzerVolume();
-void adjustBuzzerVolume();
-void confirmBuzzerVolume();
-
-
 // ===== MOTOR CONTROL =====
 // Motor internal state is kept private to the implementation (.cpp)
 void handleSwitchDetection();
 void modifyMotorState(bool switchState, bool buttonState);
-void updateMotorPWM();  // Software PWM update - call frequently from main loop
-
-// Motor speed control (0-100%) — setter persists and applies
-extern int motor_speed_percent;
-void setMotorSpeed(int percent);
-
-// Menu handlers for motor speed
-void showMotorSpeed();
-void adjustMotorSpeed();
-void confirmMotorSpeed();
 
 // ===== ACTIVE BOX =====
 extern String active_box;
