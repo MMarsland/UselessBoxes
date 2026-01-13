@@ -1,65 +1,383 @@
 # GitHub Copilot Instructions — UselessBoxes
 
-## Quick summary
+## Quick Summary
 
-- This is an Arduino (Nano ESP32) + PlatformIO project that runs a "Useless Box" (motor, RGB LED, buzzer, switches). The firmware is in `PlatformIO/src/Useless_Boxes.cpp` and device/cloud integration is defined in `include/thingProperties.h`.
+UselessBoxes is a paired IoT "Useless Box" project for Arduino Nano ESP32. Two boxes connected via Arduino IoT Cloud allow users to remotely activate each other's motors. Each box features a motor (with direction/speed control), RGB LED (with animations), buzzer (multiple patterns), settings button, directional switch, and limit switch. Firmware: `PlatformIO/src/Useless_Boxes.cpp`, cloud integration: `include/thingProperties.h`.
 
-## Where to look first (big picture)
-
-- `PlatformIO/src/Useless_Boxes.cpp` — Main firmware: setup(), loop(), motor, LED, buzzer, menu system and non-blocking timing using `millis()`.
-- `PlatformIO/include/Useless_Boxes.h` — Shared declarations (externs, enums, menu API).
-- `PlatformIO/include/thingProperties.h` — Arduino IoT Cloud setup and `active_box` variable; `arduino_secrets.h` holds WiFi/device secrets.
-- `README.md` — Wiring, board/libraries, and PlatformIO migration notes.
-
-## Build / run / debug (explicit commands & notes)
-
-- Project uses PlatformIO in VSCode. Typical commands:
-  - Build: `platformio run` (or use the VSCode PlatformIO UI)
-  - Upload: `platformio run --target upload --environment arduino_nano_esp32 --upload-port COM4`
-  - Monitor/Serial: `platformio device monitor` (or VSCode PlatformIO Monitor)
-- Important: the repo expects the Arduino ESP32 board package installed in the Arduino IDE and ArduinoIoTCloud library available as described in `README.md`. `platformio.ini` uses `lib_extra_dirs` and `lib_ignore` to reference Arduino IDE libraries.
-
-## Secrets & cloud integration
-
-- `PlatformIO/include/arduino_secrets.h` contains `SECRET_SSID`, `SECRET_OPTIONAL_PASS`, `SECRET_DEVICE_KEY`— replace or keep local copies before flashing devices.
-- `thingProperties.h` wires `active_box` to Arduino IoT Cloud and calls `onActiveBoxChange()` on updates.
-
-## Key project-specific conventions & patterns
-
-- Non-blocking design: animations, motor updates, and buzzer use `millis()` intervals (see `MOTOR_UPDATE_INTERVAL`, `RGB_UPDATE_INTERVAL`, and buzzer state machine). Avoid `delay()` to preserve responsiveness.
-- Menu system is data-driven: add a new menu by implementing `showX()`, `adjustX()`, `confirmX()` and adding a `MenuItem` entry to `menuItems[]` in `Useless_Boxes.cpp`.
-  - Example: add `{ "New Feature", showNew, adjustNew, confirmNew }` to `menuItems[]` and implement the three functions.
-- Enums + COUNT sentinel: RGB and buzzer modes use an enum and a *_COUNT value for wrap-around (e.g., `currentRGBMode = (currentRGBMode + 1) % RGB_MODE_COUNT`). Follow this pattern for new mode lists.
-- Two-stage confirm pattern: menu `adjust` should update a transient variable (e.g., `requestedBuzzerPattern`), and `confirm` commits it (e.g., `activeBuzzerPattern = requestedBuzzerPattern`). Follow this pattern where appropriate.
-- Hardware inputs use `INPUT_PULLUP` and rely on inverted logic (LOW = pressed/active for switches/buttons). Check `modifyMotorState()` and `handleSettingsButton()` for examples.
-- Global state is declared in the header as `extern` and defined in the `.cpp`. When adding new state, add to both files to keep linkage clear.
-
-## Tests and expectations
-
-- There are no automated unit tests in the repo. Testing is hardware-driven: deploy to a board and use serial logs and the `showMenu()` output for verification.
-- Use Serial prints (existing throughout code) and PlatformIO Monitor to observe runtime behavior and menus.
-
-## Files you will commonly edit
-
-- `PlatformIO/src/Useless_Boxes.cpp` — feature logic, menus, timers, hardware behavior
-- `PlatformIO/include/Useless_Boxes.h` — declarations and new externs
-- `PlatformIO/include/thingProperties.h` & `arduino_secrets.h` — cloud properties and credentials
-- `platformio.ini` — if library paths or envs need updates
-
-## Small examples / gotchas (copyable guidance)
-
-- Add a timed task: create `lastX` and `X_INTERVAL` constants and check `if (millis() - lastX >= X_INTERVAL) { lastX = millis(); /* work */ }` (see RGB and motor handlers).
-- Add a menu option:
-  1. Add `void showFoo(); void adjustFoo(); void confirmFoo();`
-  2. Add `{ "Foo", showFoo, adjustFoo, confirmFoo }` to `menuItems[]`.
-  3. Implement actions and ensure `showFoo()` prints status for live preview.
-- Changing behavior remotely: update `active_box` in the cloud (Arduino IoT Cloud) — `onActiveBoxChange()` is invoked from `thingProperties.h`.
-
-## When to ask for human help
-
-- If you need access credentials for the Arduino Cloud (device key/SSID) or if the device behaves differently than the serial logs show (hardware fault likely).
-- If a build fails due to missing ArduinoIDE library packages — confirm `lib_extra_dirs` points at your local Arduino libraries.
+**Current Status (Jan 2026):** Feature-complete with motor soft-PWM speed control, persistent settings storage, and full menu system.
 
 ---
 
-If any of these sections are unclear or you want more examples (e.g., adding a new RGB animation, or a guided patch that adds a menu item), tell me which area to expand and I will iterate. — GitHub Copilot (Raptor mini, Preview)
+## Where to Look First (Big Picture)
+
+- **[PlatformIO/src/Useless_Boxes.cpp](PlatformIO/src/Useless_Boxes.cpp)** — Main firmware logic: setup/loop, motor control, LED/buzzer state machines, menu system, non-blocking timers using `millis()`.
+- **[PlatformIO/include/Useless_Boxes.h](PlatformIO/include/Useless_Boxes.h)** — Public API: externs, enums (RGBMode, BuzzerPattern), menu structures, function declarations.
+- **[PlatformIO/include/thingProperties.h](PlatformIO/include/thingProperties.h)** — Arduino IoT Cloud property definitions and sync callbacks (e.g., `onActiveBoxChange()`).
+- **[PlatformIO/include/arduino_secrets.h](PlatformIO/include/arduino_secrets.h)** — WiFi credentials (SECRET_SSID, SECRET_PASS) and device key (SECRET_DEVICE_KEY).
+- **[README.md](README.md)** — Wiring diagram, board setup, library requirements, PlatformIO migration notes.
+
+---
+
+## Build / Run / Debug (Explicit Commands & Notes)
+
+### Build and Upload
+
+```bash
+# Build for default environment (arduino_nano_esp32):
+platformio run --environment arduino_nano_esp32
+
+# Build and upload to trevor device (COM6):
+platformio run --target upload --environment arduino_nano_esp32_trevor --upload-port COM6
+
+# Monitor serial output (select environment and port):
+platformio device monitor --environment arduino_nano_esp32_trevor --port COM6
+```
+
+### Environment Configuration
+
+- `platformio.ini` defines two environments: `arduino_nano_esp32` (generic) and `arduino_nano_esp32_trevor` (specific board).
+- Each environment maps to an Arduino Nano ESP32 with ESP32S3 chip (240MHz, 320KB RAM, 16MB Flash).
+- Library dependencies: `ArduinoIoTCloud`, `Preferences` (non-volatile storage), `Arduino_ConnectionHandler`.
+- `lib_extra_dirs = ~/Documents/Arduino/libraries` links to Arduino IDE libraries; `lib_ignore = WiFiNINA` excludes conflicting packages.
+
+### Serial Monitor Output
+
+The firmware logs all state changes, button presses, menu navigation, and motor activity to Serial (9600 baud). Use PlatformIO Monitor to observe:
+- Menu display and selection navigation
+- Motor speed adjustments and PWM timing changes
+- Active/Inactive LED and buzzer state transitions
+- Switch and limit sensor events
+- Cloud sync messages from Arduino IoT Cloud
+
+---
+
+## Secrets & Cloud Integration
+
+### Credentials
+
+- **`arduino_secrets.h`**: Contains three secrets. **Never commit this file to version control.**
+  - `SECRET_SSID` — WiFi network name
+  - `SECRET_OPTIONAL_PASS` — WiFi password (empty string if open network)
+  - `SECRET_DEVICE_KEY` — Arduino IoT Cloud device key (obtained from Arduino IoT web console)
+
+### Arduino IoT Cloud Integration
+
+- **`thingProperties.h`** (auto-generated by Arduino Cloud Editor) defines the `active_box` property:
+  - Type: `String`
+  - Permission: `READ_WRITE` (bidirectional sync)
+  - Callback: `onActiveBoxChange()` (invoked when cloud updates the value)
+- **`onActiveBoxChange()`** in `Useless_Boxes.cpp` responds to remote activation:
+  - If `active_box` changes to this device's `BOX_NAME`, trigger active LED/buzzer and motor activation
+  - If `active_box` changes to another device, switch to inactive LED/buzzer settings
+- Cloud sync occurs in the main `loop()` via `ArduinoCloud.update()` (called every iteration, ~1-5ms).
+
+---
+
+## Motor Control Architecture
+
+### Speed Control (Soft PWM, 50ms Cycle)
+
+Motor speed is menu-configurable (0–100%, persistent via ESP32 Preferences):
+- **0%**: motor off (50ms off per 50ms cycle)
+- **50%**: 25ms on, 25ms off per cycle (reduced torque)
+- **100%**: motor on continuously (0ms off)
+
+**Formula**: `onTime_ms = (motorSpeed * MOTOR_PWM_CYCLE_TIME) / 100; offTime_ms = MOTOR_PWM_CYCLE_TIME - onTime_ms`
+
+### Motor State Machine
+
+Global state variables (in anonymous namespace):
+- `motorDirection` (1=forward, -1=reverse, 0=stopped)
+- `motorShouldRun` (bool; set by `modifyMotorState()` based on switch/limit logic)
+- `motorPWMEnabled` (bool; tracks current PWM phase: on or off)
+- `lastMotorPWMUpdate` (timestamp; milliseconds when PWM state last changed)
+- `MOTOR_PWM_CYCLE_TIME = 50` (constant; 50ms total cycle)
+
+### Motor Loop Execution
+
+1. **`handleSwitchDetection()`** (called every main loop) — Reads SWITCH_PIN (SPDT direction) and LIMIT_PIN (normally closed limit switch). Calls `modifyMotorState()` when state changes.
+2. **`modifyMotorState(switchState, limitState)`** — Sets `motorDirection` and `motorShouldRun` based on switch position and limit state; handles 100ms overrun delay after limit trigger.
+3. **`updateMotorPWM()`** (called every main loop) — Implements soft PWM timing logic:
+   - If `motorShouldRun == false`, de-energize motor immediately.
+   - If `motorShouldRun == true`, toggle IN1/IN2 based on elapsed time within the 50ms cycle.
+   - Direction pins (IN1, IN2) energize only during the "on" phase of PWM.
+
+### Wiring (Arduino Nano ESP32 → L293D Motor Driver)
+
+| Arduino Pin | L293D Pin | Function |
+|-----------|----------|----------|
+| D2 | 2 (IN1) | Motor direction control A |
+| D3 | 7 (IN2) | Motor direction control B |
+| D4 | 1 (EN1) | Motor enable (always HIGH; PWM via `updateMotorPWM()`) |
+
+---
+
+## Persistent Settings Storage (Preferences / NVS)
+
+All user-configurable settings persist to ESP32 non-volatile memory:
+
+| Setting | Key (Preferences) | Type | Default | Setter |
+|---------|------------------|------|---------|--------|
+| Active RGB Mode | `"active_rgb"` | int | RGB_RAINBOW | `setActiveRGBSetting()` |
+| Inactive RGB Mode | `"inactive_rgb"` | int | RGB_SOLID_RED | `setInactiveRGBSetting()` |
+| RGB Brightness | `"rgb_brightness"` | int | 100 (%) | `setRGBBrightness()` |
+| Active Buzzer Pattern | `"active_buzzer"` | int | BUZZER_CHIRP | `setActiveBuzzerSetting()` |
+| Inactive Buzzer Pattern | `"inactive_buzzer"` | int | BUZZER_SINGLE | `setInactiveBuzzerSetting()` |
+| Motor Speed | `"motor_speed"` | int | 100 (%) | `setMotorSpeed()` |
+
+**Persistence Mechanism:**
+- `Preferences prefs` instance opened in `setup()` with namespace `"useless_box"`.
+- Each setter calls `prefs.putInt(key, value)` to update flash memory.
+- `loadPersistentSettings()` called during `setup()` to restore all settings.
+- Settings remain even after power loss; factory defaults apply only on first boot.
+
+---
+
+## Menu System (Data-Driven)
+
+### Architecture
+
+`menuItems[]` array holds `MenuItem` structures:
+```cpp
+struct MenuItem {
+  const char* name;          // Display name
+  void (*onShow)();          // Show current value (called on enter or short press)
+  void (*onAdjust)();        // Adjust value (called on short press in submenu)
+  void (*onConfirm)();       // Confirm and save (called on long press in submenu)
+};
+```
+
+Current menu items (7 total):
+1. Active RGB
+2. Inactive RGB
+3. RGB Brightness
+4. Active Buzzer
+5. Inactive Buzzer
+6. **Motor Speed** ← NEW (Jan 2026)
+7. Motor Testing
+
+### Menu Navigation (Button-Driven)
+
+**Settings Button** (D10, INPUT_PULLUP, active LOW):
+- **Short press** (< LONG_PRESS_TIME): cycle to next menu item OR adjust submenu value
+- **Long press** (> LONG_PRESS_TIME): enter/exit submenu OR save and return
+
+**Flow:**
+1. Main menu: display current setting name
+2. Short press: display next setting
+3. Long press: enter submenu, show current value via `onShow()`
+4. Short press (in submenu): adjust value via `onAdjust()`, display live preview
+5. Long press (in submenu): save value via `onConfirm()`, return to main menu
+6. 30-second idle → auto-return to main menu
+
+### Adding a New Menu Item (Template)
+
+1. **Declare state variable** in `.cpp` (and `extern` in `.h` if shared):
+   ```cpp
+   int myNewSetting = DEFAULT_VALUE;
+   ```
+
+2. **Create setter** with validation and persistence:
+   ```cpp
+   void setMyNewSetting(int value) {
+     if (value < MIN || value > MAX) return;
+     myNewSetting = value;
+     prefs.putInt("my_new_setting", myNewSetting);
+   }
+   ```
+
+3. **Implement menu handlers** (show/adjust/confirm):
+   ```cpp
+   void showMyNewSetting() {
+     Serial.print("My New Setting: ");
+     Serial.println(myNewSetting);
+   }
+   void adjustMyNewSetting() {
+     int next = myNewSetting + 1;  // or cycle logic
+     if (next > MAX) next = MIN;
+     setMyNewSetting(next);
+     showMyNewSetting();
+   }
+   void confirmMyNewSetting() {
+     showMyNewSetting();  // or custom confirmation logic
+   }
+   ```
+
+4. **Add MenuItem entry** to `menuItems[]`:
+   ```cpp
+   { "My New Setting", showMyNewSetting, adjustMyNewSetting, confirmMyNewSetting }
+   ```
+
+5. **Declare in header** (`Useless_Boxes.h`):
+   ```cpp
+   extern int myNewSetting;
+   void setMyNewSetting(int value);
+   void showMyNewSetting();
+   void adjustMyNewSetting();
+   void confirmMyNewSetting();
+   ```
+
+---
+
+## RGB LED Control
+
+### Modes (Enum: `RGBMode`)
+
+| Mode | Behavior | Animation | Use Case |
+|------|----------|-----------|----------|
+| `RGB_OFF` | No output (0,0,0) | — | Idle |
+| `RGB_WHITE` | Solid white | — | Default active |
+| `RGB_RAINBOW` | Smooth sine-wave color sweep | 20ms update interval | Festive |
+| `RGB_BREATHING` | Fade white in/out | 20ms update interval | Calming |
+| `RGB_SOLID_RED` | Solid red | — | Inactive default |
+| `RGB_SOLID_GREEN` | Solid green | — | Custom |
+| `RGB_SOLID_BLUE` | Solid blue | — | Custom |
+
+### Pin Mapping & Hardware
+
+- **Arduino Pins** (PWM-capable): D5 (Blue), D6 (Green), D7 (Red)
+- **RGB LED type**: Common anode (active LOW; pins pull to GND to illuminate)
+- **Current-limiting resistors**: 220Ω in series with each cathode
+- **Brightness scaling**: Applied in `setRGB()` as `(channel * rgb_brightness_percentage) / 100`
+
+### Key Functions
+
+- `setRGB(r, g, b)` — Set RGB values with brightness scaling and common-anode inversion
+- `applyRGBMode()` — Apply the static color for current mode
+- `updateAnimations()` — Non-blocking animation update (rainbow, breathing) called every main loop iteration
+
+---
+
+## Buzzer Control
+
+### Patterns (Enum: `BuzzerPattern`)
+
+| Pattern | Sequence | Use Case |
+|---------|----------|----------|
+| `BUZZER_OFF` | Silent | Default |
+| `BUZZER_SINGLE` | 1 beep (120ms @ 1kHz) | Simple feedback |
+| `BUZZER_CHIRP` | 3 chirps (800→1200→800 Hz, 120ms each) | Menu confirm |
+| `BUZZER_LOOP` | Repeating beeps (250ms on/off cycle) | Looping alert |
+| `BUZZER_SOS` | SOS Morse code (150/150/400ms pattern @ 800Hz) | Emergency |
+
+### Non-Blocking State Machine
+
+`currentBuzzerPattern` stores the active pattern. `updateBuzzerAlarm()` (called every main loop) advances the pattern state machine:
+- `buzzerStep` — current step in the pattern sequence
+- `buzzerLast` — last state change timestamp (for timing)
+- `buzzerState` — internal toggle for looping patterns
+
+Pattern playback is **non-blocking**; the loop continues at ~1-5ms intervals without `delay()`.
+
+### Pin Mapping
+
+- **Arduino Pin**: D11 (PWM-capable)
+- **Hardware**: Active HIGH (buzzer positive terminal to pin, negative to GND)
+
+---
+
+## Key Project-Specific Patterns
+
+### Non-Blocking Timing Template
+
+All time-dependent features (motor PWM, RGB animation, buzzer, menu timeout) use this pattern:
+```cpp
+unsigned long now = millis();
+if (now - lastEventTime >= INTERVAL_MS) {
+  lastEventTime = now;
+  // Do work here
+}
+```
+
+**Never use `delay()`** — it blocks the entire loop and prevents responsive button handling and cloud updates.
+
+### Enum + COUNT Pattern
+
+For wraparound iteration (e.g., menu cycling):
+```cpp
+enum MyMode {
+  MODE_A,
+  MODE_B,
+  MODE_C,
+  MODE_COUNT  // Sentinel value for wrap-around
+};
+// Usage: myMode = (myMode + 1) % MODE_COUNT;
+```
+
+### INPUT_PULLUP + Inverted Logic
+
+Switch inputs use `INPUT_PULLUP` (HIGH = inactive/open):
+```cpp
+bool switchPressed = (digitalRead(SWITCH_PIN) == LOW);  // LOW = active
+```
+
+---
+
+## Global State Organization
+
+### Public Externs (Shared)
+- `int motorSpeed` (0–100%)
+- `int activeRGBSetting`, `inactiveRGBSetting` (RGBMode enum)
+- `int activeBuzzerSetting`, `inactiveBuzzerSetting` (BuzzerPattern enum)
+- `int rgb_brightness_percentage` (0–100%)
+- `String active_box` (Arduino IoT Cloud property)
+
+### Private Namespace (File-Local in `.cpp`)
+- `motorDirection`, `motorShouldRun`, `motorPWMEnabled`, `lastMotorPWMUpdate`
+- Button tracking: `settingsButtonState`, `pressedTime`, `shortPressCount`, etc.
+- Menu state: `menuIndex`, `inSubMenu`
+- Switch state: `switch_forward`, `limit_pressed`
+
+**Rule:** All internal state lives in the anonymous namespace; only public API is `extern` in `.h`.
+
+---
+
+## Tests & Expectations
+
+- **No automated unit tests** — Testing is hardware-driven.
+- Deploy to device and use Serial Monitor + `showMenu()` output to verify:
+  - Menu navigation and setting adjustments
+  - Motor speed changes and PWM timing (visible via motor behavior)
+  - LED color transitions and animations
+  - Buzzer pattern playback
+  - Switch and limit sensor responses
+  - Cloud sync updates
+
+---
+
+## Files You Commonly Edit
+
+| File | Purpose | When |
+|------|---------|------|
+| `PlatformIO/src/Useless_Boxes.cpp` | Feature logic, menu handlers, timers, motor/LED/buzzer state machines | Adding features, bug fixes |
+| `PlatformIO/include/Useless_Boxes.h` | Public API declarations, externs, enums, menu structure | New state variables, function prototypes |
+| `PlatformIO/include/thingProperties.h` | Arduino IoT Cloud property sync (auto-generated) | Updating cloud properties or callbacks |
+| `PlatformIO/include/arduino_secrets.h` | WiFi & cloud credentials | Setting device credentials |
+| `platformio.ini` | Build environment config | Adding new board environments or libraries |
+
+---
+
+## Common Pitfalls & Gotchas
+
+1. **Blocking with `delay()`** — Freezes entire loop; use `millis()` timers instead.
+2. **Forgetting `extern` in `.h`** — Global state not properly linked.
+3. **Not persisting settings** — Call `prefs.putInt()` in setter; call `loadPersistentSettings()` during `setup()`.
+4. **PWM timing overflow** — `lastMotorPWMUpdate` is `unsigned long`; millis() wraps every ~49 days. Subtraction handles wraparound correctly if both are `unsigned long`.
+5. **Common-anode RGB inversion** — `setRGB()` applies `255 - value` to each channel; verify LED lights correctly on first test.
+6. **Switch logic (INPUT_PULLUP)** — Remember: LOW = pressed/active, HIGH = idle/open.
+7. **Motor enable pin (D4/EN1) always HIGH** — PWM is implemented in software via IN1/IN2 toggling, not hardware PWM on EN1.
+
+---
+
+## When to Ask for Human Help
+
+- **Missing Arduino libraries** — Confirm `lib_extra_dirs` points to your Arduino IDE library folder and all dependencies (ArduinoIoTCloud, Preferences, etc.) are installed.
+- **Cloud sync not working** — Verify `SECRET_DEVICE_KEY`, WiFi credentials, and internet connectivity; check Arduino IoT Cloud console for device registration.
+- **Hardware malfunction** — If motor doesn't respond to PWM changes, limit switch fails to trigger, or LED flickers inconsistently, suspect hardware fault (loose wires, bad connections, power supply issues).
+- **Unexpected behavior** — Check Serial Monitor output; enable higher debug levels via `setDebugMessageLevel(3)` in `setup()`.
+
+---
+
+**Last Updated:** January 12, 2026
+**Version:** 2.0 (Motor Speed Control + Full Feature Set)
+**Contributors:** GitHub Copilot (Claude Haiku), Michael Marsland
