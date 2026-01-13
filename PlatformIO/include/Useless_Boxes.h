@@ -15,7 +15,7 @@
 constexpr unsigned long DEFAULT_LONG_PRESS_TIME = 1000;   // ms  // Adjustable
 constexpr unsigned long DEFAULT_DEBOUNCE_TIME   = 50;     // ms  // Adjustable
 constexpr unsigned long DEFAULT_MENU_TIMEOUT_MS = 30000; // ms  // Adjustable
-constexpr unsigned long DEFAULT_MOTOR_UPDATE_INTERVAL = 50; // ms // Adjustable
+constexpr unsigned long DEFAULT_MOTOR_UPDATE_INTERVAL = 1; // ms // Adjustable
 constexpr int RGB_UPDATE_INTERVAL = 20; // ms // Adjustable
 
 constexpr int DEFAULT_RGB_BRIGHTNESS_PERCENTAGE = 100; // % // Setting
@@ -126,16 +126,31 @@ void showInactiveBuzzerSetting();
 void adjustInactiveBuzzerSetting();
 void confirmInactiveBuzzerSetting();
 
+void showMotorSpeed();
+void adjustMotorSpeed();
+void confirmMotorSpeed();
+
+void showMotorTest();
+void adjustMotorTest();
+void confirmMotorTest();
+
 // ===== MOTOR CONTROL =====
 // Motor internal state is kept private to the implementation (.cpp)
 void handleSwitchDetection();
 void modifyMotorState(bool switchState, bool buttonState);
+
+// Motor speed control (0-100%)
+extern int motorSpeed;
+void setMotorSpeed(int speed);
 
 // ===== ACTIVE BOX =====
 extern String active_box;
 
 void setActiveBox(String box);
 void onActiveBoxChange();
+
+// ===== MOTOR PWM CONTROL =====
+void updateMotorPWM();
 
 // ===== SETTINGS BUTTON HANDLER =====
 void handleSettingsButton();

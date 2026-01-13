@@ -47,6 +47,7 @@ int inactiveRGBSetting = RGB_SOLID_RED;
 int activeBuzzerSetting = BUZZER_CHIRP;
 int inactiveBuzzerSetting = BUZZER_SINGLE;
 int rgb_brightness_percentage = DEFAULT_RGB_BRIGHTNESS_PERCENTAGE; // % Setting
+int motorSpeed = 100; // 0-100% - controls PWM duty cycle
 
 // ------------------------------------------------------------------
 // Buzzer state
@@ -82,6 +83,13 @@ namespace {
   bool switch_forward = false; 
   bool limit_pressed = false;
   bool stateChanged = false;
+  
+  // Motor soft PWM control (dynamic timing based on motorSpeed)
+  int motorDirection = 0;  // 1=forward, -1=reverse, 0=stopped
+  bool motorShouldRun = false;  // Motor should be running
+  unsigned long lastMotorPWMUpdate = 0;
+  bool motorPWMEnabled = false;  // Current state of PWM (on or off)
+  const unsigned long MOTOR_PWM_CYCLE_TIME = 10;  // 1000ms total cycle
 }
 
 // Preferences (non-volatile storage) instance
@@ -126,6 +134,13 @@ void setInactiveBuzzerSetting(int pattern) {
   prefs.putInt("inactive_buzzer", inactiveBuzzerSetting);
 }
 
+void setMotorSpeed(int speed) {
+  if (speed <= 0) speed = 0;
+  if (speed > 100) speed = 100;
+  motorSpeed = speed;
+  prefs.putInt("motor_speed", motorSpeed);
+}
+
 // Load persisted settings (call during setup after prefs.begin())
 void loadPersistentSettings() {
   // Active/Inactive presets
@@ -134,6 +149,7 @@ void loadPersistentSettings() {
   rgb_brightness_percentage = prefs.getInt("rgb_brightness", rgb_brightness_percentage);
   activeBuzzerSetting = prefs.getInt("active_buzzer", activeBuzzerSetting);
   inactiveBuzzerSetting = prefs.getInt("inactive_buzzer", inactiveBuzzerSetting);
+  motorSpeed = prefs.getInt("motor_speed", motorSpeed);
   // initialize buzzer runtime state
   buzzerStep = 0;
   buzzerState = false;
@@ -193,9 +209,7 @@ void setup() {
   pinMode(IN1, OUTPUT);
   pinMode(IN2, OUTPUT);
   pinMode(EN1, OUTPUT);
-  digitalWrite(IN1, LOW);
-  digitalWrite(IN2, LOW);
-  digitalWrite(EN1, HIGH); // Motor OFF at startup
+  digitalWrite(EN1, LOW); // Disable motor at startup
 
   // Inputs with internal pull-ups
   pinMode(SWITCH_PIN, INPUT_PULLUP);
@@ -220,12 +234,12 @@ void setup() {
 // ==================================================================
 void loop() {
     ArduinoCloud.update();
-    handleSettingsButton();   // independent from motor
-    
-    // Run motor control every 50 ms (non-blocking)
+    handleSettingsButton();
+    handleSwitchDetection();
+
     if (millis() - lastMotorUpdate >= MOTOR_UPDATE_INTERVAL) {
       lastMotorUpdate = millis();
-      handleSwitchDetection();
+      updateMotorPWM();
     }
 
     updateAnimations();   // RGB effects (rainbow, pulse, etc)
@@ -298,7 +312,8 @@ MenuItem menuItems[] = {
   { "Inactive RGB",         showInactiveRGB,         adjustInactiveRGB,         confirmInactiveRGB },
   { "RGB Brightness",       showRGBBrightness,       adjustRGBBrightness,       confirmRGBBrightness },
   { "Active Buzzer",        showActiveBuzzerSetting, adjustActiveBuzzerSetting, confirmActiveBuzzerSetting },
-  { "Inactive Buzzer",      showInactiveBuzzerSetting, adjustInactiveBuzzerSetting, confirmInactiveBuzzerSetting }
+  { "Inactive Buzzer",      showInactiveBuzzerSetting, adjustInactiveBuzzerSetting, confirmInactiveBuzzerSetting },
+  { "Motor Speed",          showMotorSpeed,          adjustMotorSpeed,          confirmMotorSpeed }
 };
 
 int totalMenus = sizeof(menuItems) / sizeof(MenuItem);
@@ -482,7 +497,21 @@ void confirmInactiveBuzzerSetting() {
   showInactiveBuzzerSetting();
 }
 
-
+// ---------- MOTOR SPEED ----------------
+void showMotorSpeed() {
+  Serial.print("Motor Speed: ");
+  Serial.print(motorSpeed);
+  Serial.println("%");
+}
+void adjustMotorSpeed() {
+  int next = motorSpeed + 10;
+  if (next > 100) next = 40;
+  setMotorSpeed(next);
+  showMotorSpeed();
+}
+void confirmMotorSpeed() {
+  showMotorSpeed();
+}
 // ==================================================================
 
 // === RGB LED CONTROL ===============================================
@@ -620,7 +649,54 @@ void updateBuzzerAlarm() {
 }
 
 // ==================================================================
-// === SWITCH HANDLER ========================================
+// === MOTOR PWM UPDATE (Dynamic PWM based on motorSpeed) ===========
+// ==================================================================
+void updateMotorPWM() {
+  unsigned long now = millis();
+  
+  // Calculate dynamic PWM timing based on motorSpeed
+  // 100ms cycle: onTime = (motorSpeed / 100) * 100, offTime = 100 - onTime
+  unsigned long onTime = (unsigned long)((float)motorSpeed / 100.0f * MOTOR_PWM_CYCLE_TIME);
+  unsigned long offTime = MOTOR_PWM_CYCLE_TIME - onTime;
+  
+  // If motor shouldn't run, turn it off immediately
+  if (!motorShouldRun) { 
+    digitalWrite(EN1, LOW); // Disable motor
+    motorPWMEnabled = false;
+    return;
+  }
+  
+  // Motor should run - apply soft PWM
+  if (motorPWMEnabled) {
+    // Currently ON - check if we should turn OFF
+    if (now - lastMotorPWMUpdate >= onTime) {
+      // Turn motor OFF
+      //Serial.println("Motor OFF phase");
+      digitalWrite(EN1, LOW);
+      motorPWMEnabled = false;
+      lastMotorPWMUpdate = now;
+    }
+  } else {
+    // Currently OFF - check if we should turn ON
+    if (now - lastMotorPWMUpdate >= offTime) {
+      //Serial.println("Motor ON phase");
+      // Turn motor ON in the desired direction
+      if (motorDirection == 1) {
+        //Serial.println("Motor ON Forward phase");
+        // Forward
+        digitalWrite(EN1, HIGH);
+      } else if (motorDirection == -1) {
+        //Serial.println("Motor ON Reverse phase");
+        // Reverse
+        digitalWrite(EN1, HIGH);
+      }
+      motorPWMEnabled = true;
+      lastMotorPWMUpdate = now;
+    }
+  }
+}
+
+// ==================================================================// === SWITCH HANDLER ========================================
 // ==================================================================
 void handleSwitchDetection() {
   bool switchState = digitalRead(SWITCH_PIN);
@@ -678,21 +754,30 @@ void handleSwitchDetection() {
 void modifyMotorState(bool switchState, bool limitState) {
   Serial.println("Modifying motor state...");
   
+  // Determine desired motor state
   if (switchState == HIGH && active_box != BOX_NAME) {
     // Forward direction — limit switch ignored
-    Serial.println("Forward Motor.");
+    Serial.println("Forward");
+    motorDirection = 1;
+    motorShouldRun = true;
+    lastMotorPWMUpdate = millis();
+    motorPWMEnabled = false;  // Start with OFF phase of PWM
     digitalWrite(IN1, HIGH);
     digitalWrite(IN2, LOW);
   } else if (limitState == LOW) {
     // Reverse direction
-    Serial.println("Reverse Motor.");
+    Serial.println("Reverse");
+    motorDirection = -1;
+    motorShouldRun = true;
+    lastMotorPWMUpdate = millis();
+    motorPWMEnabled = false;  // Start with OFF phase of PWM
     digitalWrite(IN1, LOW);
     digitalWrite(IN2, HIGH);
   } else {
     // Stop motor
-    Serial.println("Stop Motor.");
-    digitalWrite(IN1, LOW);
-    digitalWrite(IN2, LOW);
+    Serial.println("Stop");
+    motorShouldRun = false;
+    motorDirection = 0;
   }
 }
 
@@ -710,7 +795,7 @@ void setActiveBox(String box) {
 void onActiveBoxChange()  {
   Serial.print("Active Box Changed to: ");
   Serial.println(active_box);
-  // Set stateChagned. This causes modifyMotorState() to run on the next loop even with not changes to 
+  // Set stateChanged to true. This causes modifyMotorState() to run on the next loop even with not changes to 
   // switch positions which will trigger the motor to run based on the active_box variable and the current switch positions
   stateChanged = true; 
 }
