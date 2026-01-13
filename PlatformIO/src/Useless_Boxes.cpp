@@ -56,6 +56,9 @@ int currentBuzzerPattern = BUZZER_OFF;    // active buzzer pattern playback stat
 bool buzzerState = false;           // on/off state for looping patterns
 unsigned long buzzerLast = 0;       // last toggle time
 unsigned int buzzerStep = 0;        // step in sequence
+bool buzzerDemo = false;      // true when playing a demo pattern (i.e. for a second
+unsigned long buzzerDemoStart = 0; // start time of demo pattern
+constexpr unsigned long BUZZER_DEMO_DURATION = 5000; // ms
 
 // ------------------------------------------------------------------
 // File-local internal state (kept private to this .cpp)
@@ -89,7 +92,7 @@ namespace {
   bool motorShouldRun = false;  // Motor should be running
   unsigned long lastMotorPWMUpdate = 0;
   bool motorPWMEnabled = false;  // Current state of PWM (on or off)
-  const unsigned long MOTOR_PWM_CYCLE_TIME = 10;  // 1000ms total cycle
+  const unsigned long MOTOR_PWM_CYCLE_TIME = 10;  // 20ms total cycle
 }
 
 // Preferences (non-volatile storage) instance
@@ -103,7 +106,6 @@ void setLongPressTime(unsigned long ms) { LONG_PRESS_TIME = ms; }
 void setDebounceTime(unsigned long ms) { DEBOUNCE_TIME = ms; }
 void setMenuTimeout(unsigned long ms) { MENU_TIMEOUT_MS = ms; }
 void setMotorUpdateInterval(unsigned long ms) { MOTOR_UPDATE_INTERVAL = ms; }
-
 
 // ===== Active/Inactive preset setters =====
 void setActiveRGBSetting(int mode) {
@@ -141,6 +143,7 @@ void setMotorSpeed(int speed) {
   prefs.putInt("motor_speed", motorSpeed);
 }
 
+
 // Load persisted settings (call during setup after prefs.begin())
 void loadPersistentSettings() {
   // Active/Inactive presets
@@ -157,6 +160,7 @@ void loadPersistentSettings() {
   // apply loaded values
   applyRGBMode();
 }
+
 
 // ==================================================================
 // === SETUP ========================================================
@@ -215,16 +219,12 @@ void setup() {
   pinMode(SWITCH_PIN, INPUT_PULLUP);
   pinMode(LIMIT_PIN, INPUT_PULLUP);
 
-  // Set starting state
-  switch_forward = digitalRead(SWITCH_PIN);
-  limit_pressed = digitalRead(LIMIT_PIN); 
-  modifyMotorState(switch_forward, limit_pressed);
-
   // Settings button
   pinMode(BUTTON_PIN, INPUT_PULLUP);
 
   // Reflect starting state
   onActiveBoxChange();
+  updateRGBModeFromBoxState();
   Serial.println("System Initialized.");
   showMenu();
 }
@@ -242,10 +242,11 @@ void loop() {
       updateMotorPWM();
     }
 
-    updateAnimations();   // RGB effects (rainbow, pulse, etc)
-    updateBuzzerAlarm();  // Looping buzzer patterns
+    updateAnimations();   // RGB Effects (rainbow, pulse, etc)
+    updateBuzzerAlarm();  // Buzzer Patterns
     handleSerialMenu();
 }
+
 
 // ==================================================================
 // === SETTINGS BUTTON HANDLER ======================================
@@ -318,20 +319,19 @@ MenuItem menuItems[] = {
 
 int totalMenus = sizeof(menuItems) / sizeof(MenuItem);
 
-// =============================================================
-//     MAIN MENU HANDLER (Button-driven navigation)
-// =============================================================
-
+// === MAIN MENU HANDLER (Button-driven navigation) ===
 void handleSerialMenu() {
   unsigned long now = millis();
 
-  // Timeout → return to main screen
-  if ((now - lastInteractionTime) > MENU_TIMEOUT_MS && (menuIndex != 0 || inSubMenu)) {
-    Serial.println("\n⏱️ Menu timed out — returning to main screen.\n");
-    menuIndex = 0;
-    inSubMenu = false;
-    showMenu();
-  }
+  // Remove Timeout Functionality
+  // // Timeout → return to main screen
+  // if ((now - lastInteractionTime) > MENU_TIMEOUT_MS && (menuIndex != 0 || inSubMenu)) {
+  //   Serial.println("\n⏱️ Menu timed out — returning to main screen.\n");
+  //   menuIndex = 0;
+  //   inSubMenu = false;
+  //   showMenu();
+  //   beepBuzzer(1, 2000, 0); // Long beep
+  // }
 
   // Short press: next menu item OR adjust submenu value
   if (shortPressCount > lastShortPressCount) {
@@ -341,6 +341,7 @@ void handleSerialMenu() {
     if (!inSubMenu) {
       menuIndex = (menuIndex + 1) % totalMenus;
       showMenu();
+      beepBuzzer(menuIndex+1, 100, 100);
     } else {
       menuItems[menuIndex].onAdjust();
     }
@@ -356,18 +357,18 @@ void handleSerialMenu() {
       Serial.print("⚙️ Editing ");
       Serial.println(menuItems[menuIndex].name);
       menuItems[menuIndex].onShow();
+      beepBuzzer(1, 500, 100, 800);
     } else {
       inSubMenu = false;
       menuItems[menuIndex].onConfirm();
       Serial.println("✅ Saved and returned to main menu.");
       showMenu();
+      beepBuzzer(1, 500, 100, 1200);
     }
   }
 }
 
-// =============================================================
-//    MENU DISPLAY
-// =============================================================
+// === MENU DISPLAY ===
 void showMenu() {
   Serial.println();
   Serial.print("> Setting ");
@@ -382,8 +383,9 @@ void showMenu() {
 }
 
 // ==================================================================
-// === INDIVIDUAL MENU HANDLERS ======================================
+// === INDIVIDUAL MENU HANDLERS =====================================
 // ==================================================================
+
 // ---------------- ACTIVE RGB PRESET ----------------
 void showActiveRGB() {
   Serial.print("Active RGB Mode: ");
@@ -397,13 +399,19 @@ void showActiveRGB() {
     case RGB_SOLID_BLUE: Serial.println("BLUE"); break;
     default:             Serial.println("UNKNOWN"); break;
   }
+  currentRGBMode = activeRGBSetting;
+  applyRGBMode();
 }
 void adjustActiveRGB() {
   activeRGBSetting = (activeRGBSetting + 1) % RGB_MODE_COUNT;
   setActiveRGBSetting(activeRGBSetting);
   showActiveRGB();
+  beepBuzzer(1, 100, 100);
 }
-void confirmActiveRGB() { showActiveRGB(); }
+void confirmActiveRGB() { 
+  showActiveRGB(); 
+  updateRGBModeFromBoxState();
+}
 
 // ---------------- INACTIVE RGB PRESET ----------------
 void showInactiveRGB() {
@@ -418,13 +426,20 @@ void showInactiveRGB() {
     case RGB_SOLID_BLUE: Serial.println("BLUE"); break;
     default:             Serial.println("UNKNOWN"); break;
   }
+  currentRGBMode = inactiveRGBSetting;
+  applyRGBMode();
 }
 void adjustInactiveRGB() {
   inactiveRGBSetting = (inactiveRGBSetting + 1) % RGB_MODE_COUNT;
   setInactiveRGBSetting(inactiveRGBSetting);
   showInactiveRGB();
+
+  beepBuzzer(1, 100, 100);
 }
-void confirmInactiveRGB() { showInactiveRGB(); }
+void confirmInactiveRGB() { 
+  showInactiveRGB();
+  updateRGBModeFromBoxState();
+}
 
 // ---------------- RGB BRIGHTNESS ----------------
 void showRGBBrightness() {
@@ -437,13 +452,13 @@ void adjustRGBBrightness() {
   if (next > 100) next = 0;
   setRGBBrightness(next);
   showRGBBrightness();
+  beepBuzzer(next/10, 100, 100);
 }
 void confirmRGBBrightness() {
   showRGBBrightness();
 }
-// ==================================================================
 
-// ---------------- ACTIVE/INACTIVE BUZZER PRESETS ----------------
+// ---------------- ACTIVE BUZZER PRESET ----------------
 void showActiveBuzzerSetting() {
   Serial.print("Active Buzzer: ");
   switch(activeBuzzerSetting) {
@@ -458,23 +473,14 @@ void showActiveBuzzerSetting() {
 void adjustActiveBuzzerSetting() {
   activeBuzzerSetting = (activeBuzzerSetting + 1) % BUZZER_PATTERN_COUNT;
   setActiveBuzzerSetting(activeBuzzerSetting);
+  demoBuzzerPattern(activeBuzzerSetting);
   showActiveBuzzerSetting();
 }
-// Play the given buzzer pattern once (non-blocking)
-static void triggerBuzzerPattern(int pattern) {
-  currentBuzzerPattern = pattern;
-  buzzerStep = 0;
-  buzzerState = false;
-  buzzerLast = millis();
-  noTone(BUZZER_PIN);
-}
-
 void confirmActiveBuzzerSetting() {
-  // user saved a new active buzzer selection — play it once as confirmation
-  triggerBuzzerPattern(activeBuzzerSetting);
   showActiveBuzzerSetting();
 }
 
+// ---------------- INACTIVE BUZZER PRESET ----------------
 void showInactiveBuzzerSetting() {
   Serial.print("Inactive Buzzer: ");
   switch(inactiveBuzzerSetting) {
@@ -489,11 +495,10 @@ void showInactiveBuzzerSetting() {
 void adjustInactiveBuzzerSetting() {
   inactiveBuzzerSetting = (inactiveBuzzerSetting + 1) % BUZZER_PATTERN_COUNT;
   setInactiveBuzzerSetting(inactiveBuzzerSetting);
+  demoBuzzerPattern(inactiveBuzzerSetting);
   showInactiveBuzzerSetting();
 }
 void confirmInactiveBuzzerSetting() {
-  // user saved a new inactive buzzer selection — play it once as confirmation
-  triggerBuzzerPattern(inactiveBuzzerSetting);
   showInactiveBuzzerSetting();
 }
 
@@ -508,14 +513,27 @@ void adjustMotorSpeed() {
   if (next > 100) next = 40;
   setMotorSpeed(next);
   showMotorSpeed();
+  beepBuzzer(next/10, 100, 100);
 }
 void confirmMotorSpeed() {
   showMotorSpeed();
 }
 // ==================================================================
 
-// === RGB LED CONTROL ===============================================
-// ==================================================================
+
+// === RGB LED CONTROL ==============================================
+void updateRGBModeFromBoxState() {
+  // Set currentRGBMode based on whether this box is active or inactive
+  if (active_box == BOX_NAME) {
+    // This box is active
+    currentRGBMode = activeRGBSetting;
+  } else {
+    // This box is inactive (either another box is active or no box is active)
+    currentRGBMode = inactiveRGBSetting;
+  }
+  applyRGBMode();
+}
+
 void setRGB(uint8_t r, uint8_t g, uint8_t b) {
   // Apply brightness scaling
   r = (r * rgb_brightness_percentage) / 100;
@@ -573,10 +591,30 @@ void updateAnimations() {
 }
 
 
-
-// ==================================================================
 // === BUZZER CONTROL ===============================================
-// ==================================================================
+void triggerBuzzerPattern(int pattern) {
+  currentBuzzerPattern = pattern;
+  buzzerStep = 0;
+  buzzerState = false;
+  buzzerLast = millis();
+  noTone(BUZZER_PIN);
+}
+
+void demoBuzzerPattern(int pattern) {
+  buzzerDemo = true;
+  buzzerDemoStart = millis();
+  triggerBuzzerPattern(pattern);
+}
+
+void beepBuzzer(int quantity, int duration_ms, int pause_ms, int toneFreq) {
+  for (int i = 0; i < quantity; i++) {
+    tone(BUZZER_PIN, toneFreq);
+    delay(duration_ms);
+    noTone(BUZZER_PIN);
+    delay(pause_ms);
+  }
+}
+
 void stopBuzzer() {
   currentBuzzerPattern = BUZZER_OFF;
   buzzerStep = 0;
@@ -587,6 +625,15 @@ void stopBuzzer() {
 // Non-blocking update (call inside loop)
 void updateBuzzerAlarm() {
   unsigned long now = millis();
+
+  if (now - buzzerDemoStart >= BUZZER_DEMO_DURATION && buzzerDemo) {
+    // End demo after 5 seconds
+    buzzerDemo = false;
+    currentBuzzerPattern = BUZZER_OFF;
+    buzzerStep = 0;
+    noTone(BUZZER_PIN);
+    return;
+  }
 
   switch (currentBuzzerPattern) {
     case BUZZER_OFF:
@@ -632,10 +679,10 @@ void updateBuzzerAlarm() {
       break;
 
     case BUZZER_SOS: {
-      unsigned int sosDurations[10] = {0,150,150,150,400,400,400,150,150,150};
+      unsigned int sosDurations[10] = {0,150,150,150,450,450,450,150,150,150};
       if (buzzerStep < 10) {
         if (now - buzzerLast >= sosDurations[buzzerStep] + 150) {
-          tone(BUZZER_PIN, 800, sosDurations[buzzerStep]);
+          tone(BUZZER_PIN, 900, sosDurations[buzzerStep]);
           buzzerLast = now;
           buzzerStep++;
         }
@@ -648,56 +695,7 @@ void updateBuzzerAlarm() {
   }
 }
 
-// ==================================================================
-// === MOTOR PWM UPDATE (Dynamic PWM based on motorSpeed) ===========
-// ==================================================================
-void updateMotorPWM() {
-  unsigned long now = millis();
-  
-  // Calculate dynamic PWM timing based on motorSpeed
-  // 100ms cycle: onTime = (motorSpeed / 100) * 100, offTime = 100 - onTime
-  unsigned long onTime = (unsigned long)((float)motorSpeed / 100.0f * MOTOR_PWM_CYCLE_TIME);
-  unsigned long offTime = MOTOR_PWM_CYCLE_TIME - onTime;
-  
-  // If motor shouldn't run, turn it off immediately
-  if (!motorShouldRun) { 
-    digitalWrite(EN1, LOW); // Disable motor
-    motorPWMEnabled = false;
-    return;
-  }
-  
-  // Motor should run - apply soft PWM
-  if (motorPWMEnabled) {
-    // Currently ON - check if we should turn OFF
-    if (now - lastMotorPWMUpdate >= onTime) {
-      // Turn motor OFF
-      //Serial.println("Motor OFF phase");
-      digitalWrite(EN1, LOW);
-      motorPWMEnabled = false;
-      lastMotorPWMUpdate = now;
-    }
-  } else {
-    // Currently OFF - check if we should turn ON
-    if (now - lastMotorPWMUpdate >= offTime) {
-      //Serial.println("Motor ON phase");
-      // Turn motor ON in the desired direction
-      if (motorDirection == 1) {
-        //Serial.println("Motor ON Forward phase");
-        // Forward
-        digitalWrite(EN1, HIGH);
-      } else if (motorDirection == -1) {
-        //Serial.println("Motor ON Reverse phase");
-        // Reverse
-        digitalWrite(EN1, HIGH);
-      }
-      motorPWMEnabled = true;
-      lastMotorPWMUpdate = now;
-    }
-  }
-}
-
-// ==================================================================// === SWITCH HANDLER ========================================
-// ==================================================================
+// === SWITCH HANDLER ========================================
 void handleSwitchDetection() {
   bool switchState = digitalRead(SWITCH_PIN);
   bool limitState = digitalRead(LIMIT_PIN);
@@ -747,10 +745,7 @@ void handleSwitchDetection() {
   }
 }
 
-
-// ==================================================================
 // === MOTOR BEHAVIOR ===============================================
-// ==================================================================
 void modifyMotorState(bool switchState, bool limitState) {
   Serial.println("Modifying motor state...");
   
@@ -780,6 +775,53 @@ void modifyMotorState(bool switchState, bool limitState) {
     motorDirection = 0;
   }
 }
+
+// === MOTOR PWM UPDATE (Dynamic PWM based on motorSpeed) ===========
+void updateMotorPWM() {
+  unsigned long now = millis();
+  
+  // Calculate dynamic PWM timing based on motorSpeed
+  // 100ms cycle: onTime = (motorSpeed / 100) * 100, offTime = 100 - onTime
+  unsigned long onTime = (unsigned long)((float)motorSpeed / 100.0f * MOTOR_PWM_CYCLE_TIME);
+  unsigned long offTime = MOTOR_PWM_CYCLE_TIME - onTime;
+  
+  // If motor shouldn't run, turn it off immediately
+  if (!motorShouldRun) { 
+    digitalWrite(EN1, LOW); // Disable motor
+    motorPWMEnabled = false;
+    return;
+  }
+  
+  // Motor should run - apply soft PWM
+  if (motorPWMEnabled) {
+    // Currently ON - check if we should turn OFF
+    if (now - lastMotorPWMUpdate >= onTime) {
+      // Turn motor OFF
+      //Serial.println("Motor OFF phase");
+      digitalWrite(EN1, LOW);
+      motorPWMEnabled = false;
+      lastMotorPWMUpdate = now;
+    }
+  } else {
+    // Currently OFF - check if we should turn ON
+    if (now - lastMotorPWMUpdate >= offTime) {
+      //Serial.println("Motor ON phase");
+      // Turn motor ON in the desired direction
+      if (motorDirection == 1) {
+        //Serial.println("Motor ON Forward phase");
+        // Forward
+        digitalWrite(EN1, HIGH);
+      } else if (motorDirection == -1) {
+        //Serial.println("Motor ON Reverse phase");
+        // Reverse
+        digitalWrite(EN1, HIGH);
+      }
+      motorPWMEnabled = true;
+      lastMotorPWMUpdate = now;
+    }
+  }
+}
+
 
 // ==================================================================
 // === ACTIVE BOX SETTER ============================================

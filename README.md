@@ -271,9 +271,25 @@ I can upgrade from Arduino Cloud to a different free option in the future such a
 
 #### Build the Second Box
 
-* [] Replicate hardware and software setup
-* [] Connect to the same platform
-* [] Test intercommunication between the two boxes
+* [X] Replicate hardware and software setup
+* [X] Connect to the same platform
+* [X] Test intercommunication between the two boxes
+
+#### Tweaks / Features
+
+[] Print and assemble final box in V5 with correct color
+
+[x] Ensure the correct state is loaded when turning on the box (I.e. LED)
+
+[x]  Update munu items as we scroll through them
+
+[x] Play Buzzer sound Previews as we scroll through them (Loop should end quickly)
+
+[x] Make the menu navigation obvious with beeps or lights
+
+[] Add more buzzer patterns (+ make it easy and modular to add more custom buzzer and led patters)
+
+[] Clean up code (Organize where variables and defaults are declared)
 
 #### Deployment Features
 

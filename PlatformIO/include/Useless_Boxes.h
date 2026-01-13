@@ -12,9 +12,9 @@
 // Configurable defaults (change these compile-time defaults to tune
 // product defaults; runtime values are initialized from these)
 // ------------------------------------------------------------------
-constexpr unsigned long DEFAULT_LONG_PRESS_TIME = 1000;   // ms  // Adjustable
+constexpr unsigned long DEFAULT_LONG_PRESS_TIME = 500;   // ms  // Adjustable
 constexpr unsigned long DEFAULT_DEBOUNCE_TIME   = 50;     // ms  // Adjustable
-constexpr unsigned long DEFAULT_MENU_TIMEOUT_MS = 30000; // ms  // Adjustable
+constexpr unsigned long DEFAULT_MENU_TIMEOUT_MS = 10000; // ms  // Adjustable
 constexpr unsigned long DEFAULT_MOTOR_UPDATE_INTERVAL = 1; // ms // Adjustable
 constexpr int RGB_UPDATE_INTERVAL = 20; // ms // Adjustable
 
@@ -28,13 +28,13 @@ extern unsigned long LONG_PRESS_TIME;
 extern unsigned long DEBOUNCE_TIME;
 extern unsigned long MENU_TIMEOUT_MS;
 extern unsigned long MOTOR_UPDATE_INTERVAL;
-extern int rgb_brightness_percentage;
+
 // Setter APIs (validate / apply side-effects)
 void setLongPressTime(unsigned long ms);
 void setDebounceTime(unsigned long ms);
 void setMenuTimeout(unsigned long ms);
 void setMotorUpdateInterval(unsigned long ms);
-void setRGBBrightness(int percent);
+
 
 // Menu structure
 struct MenuItem {
@@ -48,11 +48,6 @@ extern MenuItem menuItems[];
 // Menu handlers
 void handleSerialMenu();
 void showMenu();
-
-// Individual menu functions
-void showRGBBrightness();
-void adjustRGBBrightness();
-void confirmRGBBrightness();
 
 // ===== RGB LED CONTROL =====
 enum RGBMode {
@@ -73,6 +68,7 @@ extern int rainbowPos;
 extern int breathValue;
 extern int breathDir;
 
+void updateRGBModeFromBoxState();
 void setRGB(uint8_t r, uint8_t g, uint8_t b);
 void applyRGBMode();
 void updateAnimations();
@@ -95,19 +91,27 @@ extern unsigned int buzzerStep;    // step in sequence
 constexpr unsigned long BUZZER_INTERVAL = 250; // ms
 
 void stopBuzzer();
+void beepBuzzer(int quantity, int duration_ms=100, int pause_ms=100, int toneFreq=1000);
 void updateBuzzerAlarm();
+void triggerBuzzerPattern(int pattern);
+void demoBuzzerPattern(int pattern);
+
 
 // Settings for Active/Inactive behaviors (persisted presets)
 extern int activeRGBSetting;    // RGB mode when this box is active
 extern int inactiveRGBSetting;  // RGB mode when this box is inactive
+extern int rgb_brightness_percentage;
 extern int activeBuzzerSetting;   // buzzer pattern to play when active
 extern int inactiveBuzzerSetting; // buzzer pattern to play when inactive
+extern int motorSpeed; // Motor speed control (0-100%)
 
 // Setter APIs for Active/Inactive presets
 void setActiveRGBSetting(int mode);
 void setInactiveRGBSetting(int mode);
+void setRGBBrightness(int percent);
 void setActiveBuzzerSetting(int pattern);
 void setInactiveBuzzerSetting(int pattern);
+void setMotorSpeed(int speed);
 
 // Menu handlers for Active/Inactive presets
 void showActiveRGB();
@@ -117,6 +121,10 @@ void confirmActiveRGB();
 void showInactiveRGB();
 void adjustInactiveRGB();
 void confirmInactiveRGB();
+
+void showRGBBrightness();
+void adjustRGBBrightness();
+void confirmRGBBrightness();
 
 void showActiveBuzzerSetting();
 void adjustActiveBuzzerSetting();
@@ -130,29 +138,20 @@ void showMotorSpeed();
 void adjustMotorSpeed();
 void confirmMotorSpeed();
 
-void showMotorTest();
-void adjustMotorTest();
-void confirmMotorTest();
+// ===== SETTINGS BUTTON HANDLER =====
+void handleSettingsButton();
 
-// ===== MOTOR CONTROL =====
-// Motor internal state is kept private to the implementation (.cpp)
 void handleSwitchDetection();
-void modifyMotorState(bool switchState, bool buttonState);
 
-// Motor speed control (0-100%)
-extern int motorSpeed;
-void setMotorSpeed(int speed);
+// ===== MOTOR PWM CONTROL =====
+void modifyMotorState(bool switchState, bool buttonState);
+void updateMotorPWM();
+
+
 
 // ===== ACTIVE BOX =====
 extern String active_box;
 
 void setActiveBox(String box);
 void onActiveBoxChange();
-
-// ===== MOTOR PWM CONTROL =====
-void updateMotorPWM();
-
-// ===== SETTINGS BUTTON HANDLER =====
-void handleSettingsButton();
-
 #endif // USELESS_BOXES_H
