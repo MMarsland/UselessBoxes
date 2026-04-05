@@ -20,6 +20,11 @@
 #include <Preferences.h>
 #include "Useless_Boxes.h"
 #include "thingProperties.h"
+// OTA helpers
+#include <WiFi.h>
+#include <WiFiClientSecure.h>
+#include <ArduinoHttpClient.h>
+#include <Update.h>
 
 // (Hardware pin mappings live in the header as `constexpr` values)
 
@@ -97,6 +102,24 @@ namespace {
 
 // Preferences (non-volatile storage) instance
 static Preferences prefs;
+
+// ------------------------------------------------------------------
+// OTA via GitHub Releases
+// ------------------------------------------------------------------
+constexpr unsigned long OTA_CHECK_INTERVAL_MS = 60UL * 60UL * 1000UL; // 1 hour
+constexpr char CURRENT_FW_VERSION[] = "v1.0.0"; // Bump this for each release
+unsigned long lastOTACheck = 0;
+
+#if defined(BOARD_MICHAEL)
+constexpr char OTA_MANIFEST_URL[] = "https://raw.githubusercontent.com/MMarsland/UselessBoxes/main/ota/michael.txt";
+#elif defined(BOARD_TREVOR)
+constexpr char OTA_MANIFEST_URL[] = "https://raw.githubusercontent.com/MMarsland/UselessBoxes/main/ota/trevor.txt";
+#else
+constexpr char OTA_MANIFEST_URL[] = "";
+#endif
+
+void handleOTACheck();
+void checkForOTAUpdate();
 
 // ------------------------------------------------------------------
 // Setter implementations (validate and apply side-effects)
@@ -226,6 +249,10 @@ void setup() {
   onActiveBoxChange();
   updateRGBModeFromBoxState();
   Serial.println("System Initialized.");
+  Serial.print("Firmware version: ");
+  Serial.println(CURRENT_FW_VERSION);
+  Serial.print("OTA manifest: ");
+  Serial.println(OTA_MANIFEST_URL[0] != '\0' ? OTA_MANIFEST_URL : "(not configured)");
   showMenu();
 }
 
@@ -234,6 +261,7 @@ void setup() {
 // ==================================================================
 void loop() {
     ArduinoCloud.update();
+    handleOTACheck();
     handleSettingsButton();
     handleSwitchDetection();
 
@@ -399,14 +427,14 @@ void showActiveRGB() {
     case RGB_SOLID_BLUE: Serial.println("BLUE"); break;
     default:             Serial.println("UNKNOWN"); break;
   }
-  currentRGBMode = activeRGBSetting;
-  applyRGBMode();
 }
 void adjustActiveRGB() {
   activeRGBSetting = (activeRGBSetting + 1) % RGB_MODE_COUNT;
   setActiveRGBSetting(activeRGBSetting);
   showActiveRGB();
   beepBuzzer(1, 100, 100);
+  currentRGBMode = activeRGBSetting;
+  applyRGBMode();
 }
 void confirmActiveRGB() { 
   showActiveRGB(); 
@@ -426,15 +454,14 @@ void showInactiveRGB() {
     case RGB_SOLID_BLUE: Serial.println("BLUE"); break;
     default:             Serial.println("UNKNOWN"); break;
   }
-  currentRGBMode = inactiveRGBSetting;
-  applyRGBMode();
 }
 void adjustInactiveRGB() {
   inactiveRGBSetting = (inactiveRGBSetting + 1) % RGB_MODE_COUNT;
   setInactiveRGBSetting(inactiveRGBSetting);
   showInactiveRGB();
-
   beepBuzzer(1, 100, 100);
+  currentRGBMode = inactiveRGBSetting;
+  applyRGBMode();
 }
 void confirmInactiveRGB() { 
   showInactiveRGB();
@@ -840,4 +867,308 @@ void onActiveBoxChange()  {
   // Set stateChanged to true. This causes modifyMotorState() to run on the next loop even with not changes to 
   // switch positions which will trigger the motor to run based on the active_box variable and the current switch positions
   stateChanged = true; 
+}
+
+namespace {
+  struct ParsedHttpsUrl {
+    String host;
+    String path;
+    uint16_t port = 443;
+  };
+
+  bool parseHttpsUrl(const String& url, ParsedHttpsUrl& parsed) {
+    if (!url.startsWith("https://")) {
+      Serial.println("Only https:// OTA URLs are supported.");
+      return false;
+    }
+
+    int hostStart = 8; // strlen("https://")
+    int pathStart = url.indexOf('/', hostStart);
+    String hostPort = pathStart >= 0 ? url.substring(hostStart, pathStart) : url.substring(hostStart);
+
+    parsed.path = pathStart >= 0 ? url.substring(pathStart) : "/";
+    if (parsed.path.length() == 0) {
+      parsed.path = "/";
+    }
+
+    int colonPos = hostPort.indexOf(':');
+    if (colonPos >= 0) {
+      parsed.host = hostPort.substring(0, colonPos);
+      parsed.port = static_cast<uint16_t>(hostPort.substring(colonPos + 1).toInt());
+    } else {
+      parsed.host = hostPort;
+      parsed.port = 443;
+    }
+
+    return parsed.host.length() > 0;
+  }
+
+  bool isRedirectStatus(int statusCode) {
+    return statusCode == 301 || statusCode == 302 || statusCode == 307 || statusCode == 308;
+  }
+
+  String resolveRedirectUrl(const String& location, const ParsedHttpsUrl& currentUrl) {
+    String redirectUrl = location;
+    redirectUrl.trim();
+
+    if (redirectUrl.startsWith("https://")) {
+      return redirectUrl;
+    }
+
+    String baseUrl = "https://" + currentUrl.host;
+    if (currentUrl.port != 443) {
+      baseUrl += ":" + String(currentUrl.port);
+    }
+
+    if (redirectUrl.startsWith("/")) {
+      return baseUrl + redirectUrl;
+    }
+
+    return baseUrl + "/" + redirectUrl;
+  }
+
+  String readHeaderValueByName(HttpClient& http, const String& headerName) {
+    while (http.headerAvailable()) {
+      String name = http.readHeaderName();
+      String value = http.readHeaderValue();
+      if (name.equalsIgnoreCase(headerName)) {
+        return value;
+      }
+    }
+    return "";
+  }
+
+  String fetchTextFromUrl(const String& url, uint8_t redirectCount = 0) {
+    if (redirectCount > 5) {
+      Serial.println("Too many redirects while fetching the OTA manifest.");
+      return "";
+    }
+
+    ParsedHttpsUrl parsedUrl;
+    if (!parseHttpsUrl(url, parsedUrl)) {
+      return "";
+    }
+
+    WiFiClientSecure networkClient;
+    networkClient.setInsecure(); // Simplest setup for GitHub-hosted HTTPS files
+    HttpClient http(networkClient, parsedUrl.host, parsedUrl.port);
+
+    int requestResult = http.get(parsedUrl.path);
+    if (requestResult != HTTP_SUCCESS) {
+      Serial.print("Manifest GET start failed: ");
+      Serial.println(requestResult);
+      http.stop();
+      return "";
+    }
+
+    int statusCode = http.responseStatusCode();
+    if (statusCode < 0) {
+      Serial.print("Manifest response error: ");
+      Serial.println(statusCode);
+      http.stop();
+      return "";
+    }
+
+    if (isRedirectStatus(statusCode)) {
+      String location = readHeaderValueByName(http, "Location");
+      http.stop();
+      if (location.length() == 0) {
+        Serial.println("Redirect response missing Location header.");
+        return "";
+      }
+      return fetchTextFromUrl(resolveRedirectUrl(location, parsedUrl), redirectCount + 1);
+    }
+
+    if (statusCode != 200) {
+      Serial.print("Manifest GET failed, code: ");
+      Serial.println(statusCode);
+      http.stop();
+      return "";
+    }
+
+    String body = http.responseBody();
+    http.stop();
+    return body;
+  }
+
+  void performOTAFromUrlWithRedirects(const String& url, uint8_t redirectCount = 0) {
+    if (redirectCount > 5) {
+      Serial.println("Too many redirects while downloading firmware.");
+      return;
+    }
+
+    ParsedHttpsUrl parsedUrl;
+    if (!parseHttpsUrl(url, parsedUrl)) {
+      return;
+    }
+
+    WiFiClientSecure networkClient;
+    networkClient.setInsecure(); // Simplest setup for GitHub-hosted HTTPS files
+    HttpClient http(networkClient, parsedUrl.host, parsedUrl.port);
+
+    Serial.print("Starting OTA from URL: ");
+    Serial.println(url);
+
+    int requestResult = http.get(parsedUrl.path);
+    if (requestResult != HTTP_SUCCESS) {
+      Serial.print("HTTP GET start failed: ");
+      Serial.println(requestResult);
+      http.stop();
+      return;
+    }
+
+    int statusCode = http.responseStatusCode();
+    if (statusCode < 0) {
+      Serial.print("HTTP response error: ");
+      Serial.println(statusCode);
+      http.stop();
+      return;
+    }
+
+    if (isRedirectStatus(statusCode)) {
+      String location = readHeaderValueByName(http, "Location");
+      http.stop();
+      if (location.length() == 0) {
+        Serial.println("Redirect response missing Location header.");
+        return;
+      }
+
+      String redirectUrl = resolveRedirectUrl(location, parsedUrl);
+      Serial.print("Following redirect to: ");
+      Serial.println(redirectUrl);
+      performOTAFromUrlWithRedirects(redirectUrl, redirectCount + 1);
+      return;
+    }
+
+    if (statusCode != 200) {
+      Serial.print("HTTP GET failed, code: ");
+      Serial.println(statusCode);
+      http.stop();
+      return;
+    }
+
+    long contentLength = http.contentLength();
+    Serial.print("Firmware size: ");
+    Serial.println(contentLength);
+
+    if (!Update.begin(contentLength > 0 ? contentLength : UPDATE_SIZE_UNKNOWN)) {
+      Serial.println("Not enough space or OTA begin failed.");
+      http.stop();
+      return;
+    }
+
+    size_t written = Update.writeStream(http);
+    Serial.print("Written bytes: ");
+    Serial.println(written);
+
+    if (contentLength > 0 && written != static_cast<size_t>(contentLength)) {
+      Serial.println("OTA write incomplete.");
+      Update.abort();
+      http.stop();
+      return;
+    }
+
+    if (!Update.end()) {
+      Serial.print("OTA Update failed. Error #: ");
+      Serial.println(Update.getError());
+      http.stop();
+      return;
+    }
+
+    if (!Update.isFinished()) {
+      Serial.println("OTA Update did not finish cleanly.");
+      http.stop();
+      return;
+    }
+
+    Serial.println("OTA Update successful — restarting.");
+    http.stop();
+    delay(500);
+    ESP.restart();
+  }
+}
+
+void handleOTACheck() {
+  unsigned long now = millis();
+
+  if (WiFi.status() != WL_CONNECTED) {
+    return;
+  }
+
+  if (lastOTACheck != 0 && (now - lastOTACheck < OTA_CHECK_INTERVAL_MS)) {
+    return;
+  }
+
+  lastOTACheck = now;
+  checkForOTAUpdate();
+}
+
+void checkForOTAUpdate() {
+  if (OTA_MANIFEST_URL[0] == '\0') {
+    return;
+  }
+
+  Serial.println("Checking OTA manifest...");
+  Serial.println(OTA_MANIFEST_URL);
+
+  String body = fetchTextFromUrl(OTA_MANIFEST_URL);
+  if (body.length() == 0) {
+    Serial.println("OTA manifest fetch returned no data.");
+    return;
+  }
+
+  int newline = body.indexOf('\n');
+  if (newline < 0) {
+    Serial.println("Invalid manifest format.");
+    return;
+  }
+
+  String remoteVersion = body.substring(0, newline);
+  remoteVersion.trim();
+
+  String firmwareUrl = body.substring(newline + 1);
+  firmwareUrl.trim();
+
+  Serial.print("Current FW: ");
+  Serial.println(CURRENT_FW_VERSION);
+  Serial.print("Remote FW: ");
+  Serial.println(remoteVersion);
+
+  if (remoteVersion == CURRENT_FW_VERSION) {
+    Serial.println("No OTA update available.");
+    return;
+  }
+
+  if (firmwareUrl.length() == 0) {
+    Serial.println("Manifest missing firmware URL.");
+    return;
+  }
+
+  Serial.println("New firmware found. Starting OTA...");
+  performOTAFromUrl(firmwareUrl);
+}
+
+// Called when `ota_url` or `ota_target` change via Arduino IoT Cloud.
+void onOtaRequestChange() {
+  Serial.println("OTA request changed via Cloud.");
+  Serial.print("Target: "); Serial.println(ota_target);
+  Serial.print("URL: "); Serial.println(ota_url);
+
+  if (ota_url.length() == 0) {
+    Serial.println("No OTA URL provided — ignoring.");
+    return;
+  }
+
+  // If the request targets this box or "ALL", proceed
+  if (ota_target.equalsIgnoreCase(BOX_NAME) || ota_target.equalsIgnoreCase("ALL")) {
+    Serial.println("This device is targeted for OTA. Starting download...");
+    performOTAFromUrl(ota_url);
+  } else {
+    Serial.println("OTA request not targeted at this device. Ignoring.");
+  }
+}
+
+// Download firmware from a URL and apply OTA update.
+void performOTAFromUrl(const String& url) {
+  performOTAFromUrlWithRedirects(url);
 }

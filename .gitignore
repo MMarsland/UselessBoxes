@@ -3,3 +3,4 @@ arduino_secrets_*.h
 sketch.json
 
 .pio
+UselessBoxes_PCB/*

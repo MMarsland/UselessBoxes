@@ -1,0 +1,2 @@
+v1.0.0
+https://github.com/MMarsland/UselessBoxes/releases/download/v1.0.0/trevor-firmware.bin

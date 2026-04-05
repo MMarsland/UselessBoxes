@@ -154,4 +154,11 @@ extern String active_box;
 
 void setActiveBox(String box);
 void onActiveBoxChange();
+
+// OTA update request (set via Arduino IoT Cloud)
+extern String ota_url;    // URL where the firmware binary can be downloaded
+extern String ota_target; // Target BOX_NAME or "ALL"
+
+void onOtaRequestChange();
+void performOTAFromUrl(const String& url);
 #endif // USELESS_BOXES_H

@@ -11,6 +11,11 @@ const char DEVICE_KEY[]         = SECRET_DEVICE_KEY;    // Secret device passwor
 
 void onActiveBoxChange();
 
+void onOtaRequestChange();
+
+String ota_url;
+String ota_target;
+
 String active_box;
 
 void initProperties(){
@@ -18,6 +23,8 @@ void initProperties(){
   ArduinoCloud.setBoardId(DEVICE_LOGIN_NAME);
   ArduinoCloud.setSecretDeviceKey(DEVICE_KEY);
   ArduinoCloud.addProperty(active_box, READWRITE, ON_CHANGE, onActiveBoxChange);
+  ArduinoCloud.addProperty(ota_url, READWRITE, ON_CHANGE, onOtaRequestChange);
+  ArduinoCloud.addProperty(ota_target, READWRITE, ON_CHANGE, onOtaRequestChange);
 
 }
 
