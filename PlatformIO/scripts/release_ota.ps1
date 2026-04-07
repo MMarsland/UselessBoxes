@@ -78,6 +78,11 @@ if ($CreateGitHubRelease) {
         throw "GitHub CLI (gh) is not installed or not on PATH."
     }
 
+    cmd /c "gh auth status >NUL 2>NUL"
+    if ($LASTEXITCODE -ne 0) {
+        throw "GitHub CLI is installed but not authenticated. Run: gh auth login"
+    }
+
     $assetPaths = @(
         (Join-Path $artifactDir "michael-firmware.bin"),
         (Join-Path $artifactDir "trevor-firmware.bin")
@@ -85,7 +90,7 @@ if ($CreateGitHubRelease) {
 
     Write-Host "[ota] Creating or updating GitHub release $version..."
 
-    & gh release view $version *> $null
+    cmd /c "gh release view $version >NUL 2>NUL"
     if ($LASTEXITCODE -eq 0) {
         & gh release upload $version $assetPaths --clobber
     } else {
