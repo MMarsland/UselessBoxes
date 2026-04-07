@@ -104,6 +104,7 @@ extern int rgb_brightness_percentage;
 extern int activeBuzzerSetting;   // buzzer pattern to play when active
 extern int inactiveBuzzerSetting; // buzzer pattern to play when inactive
 extern int motorSpeed; // Motor speed control (0-100%)
+extern bool soloMode;  // If true, the box runs locally and ignores shared activation
 
 // Setter APIs for Active/Inactive presets
 void setActiveRGBSetting(int mode);
@@ -112,6 +113,7 @@ void setRGBBrightness(int percent);
 void setActiveBuzzerSetting(int pattern);
 void setInactiveBuzzerSetting(int pattern);
 void setMotorSpeed(int speed);
+void setSoloMode(bool enabled);
 
 // Menu handlers for Active/Inactive presets
 void showActiveRGB();
@@ -137,6 +139,10 @@ void confirmInactiveBuzzerSetting();
 void showMotorSpeed();
 void adjustMotorSpeed();
 void confirmMotorSpeed();
+
+void showSoloMode();
+void adjustSoloMode();
+void confirmSoloMode();
 
 // ===== SETTINGS BUTTON HANDLER =====
 void handleSettingsButton();

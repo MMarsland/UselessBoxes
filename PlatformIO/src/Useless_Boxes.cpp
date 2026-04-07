@@ -53,6 +53,7 @@ int activeBuzzerSetting = BUZZER_CHIRP;
 int inactiveBuzzerSetting = BUZZER_SINGLE;
 int rgb_brightness_percentage = DEFAULT_RGB_BRIGHTNESS_PERCENTAGE; // % Setting
 int motorSpeed = 100; // 0-100% - controls PWM duty cycle
+bool soloMode = false; // When true, this box ignores shared activation and runs locally
 
 // ------------------------------------------------------------------
 // Buzzer state
@@ -114,11 +115,11 @@ constexpr char CURRENT_FW_VERSION[] = "v1.0.0"; // Bump this for each release
 unsigned long lastOTACheck = 0;
 
 #if defined(BOARD_MICHAEL)
-constexpr char OTA_MANIFEST_URL[] = "https://raw.githubusercontent.com/MMarsland/UselessBoxes/main/ota/michael.txt";
+  constexpr char OTA_MANIFEST_URL[] = "https://raw.githubusercontent.com/MMarsland/UselessBoxes/main/ota/michael.txt";
 #elif defined(BOARD_TREVOR)
-constexpr char OTA_MANIFEST_URL[] = "https://raw.githubusercontent.com/MMarsland/UselessBoxes/main/ota/trevor.txt";
+  constexpr char OTA_MANIFEST_URL[] = "https://raw.githubusercontent.com/MMarsland/UselessBoxes/main/ota/trevor.txt";
 #else
-constexpr char OTA_MANIFEST_URL[] = "";
+  constexpr char OTA_MANIFEST_URL[] = "";
 #endif
 
 void handleOTACheck();
@@ -213,6 +214,18 @@ void setMotorSpeed(int speed) {
   prefs.putInt("motor_speed", motorSpeed);
 }
 
+void setSoloMode(bool enabled) {
+  soloMode = enabled;
+  prefs.putBool("solo_mode", soloMode);
+
+  if (soloMode && active_box == BOX_NAME) {
+    setActiveBox("NONE");
+  }
+
+  updateRGBModeFromBoxState();
+  stateChanged = true;
+}
+
 
 // Load persisted settings (call during setup after prefs.begin())
 void loadPersistentSettings() {
@@ -223,6 +236,7 @@ void loadPersistentSettings() {
   activeBuzzerSetting = prefs.getInt("active_buzzer", activeBuzzerSetting);
   inactiveBuzzerSetting = prefs.getInt("inactive_buzzer", inactiveBuzzerSetting);
   motorSpeed = prefs.getInt("motor_speed", motorSpeed);
+  soloMode = prefs.getBool("solo_mode", soloMode);
   // initialize buzzer runtime state
   buzzerStep = 0;
   buzzerState = false;
@@ -390,7 +404,8 @@ MenuItem menuItems[] = {
   { "RGB Brightness",       showRGBBrightness,       adjustRGBBrightness,       confirmRGBBrightness },
   { "Active Buzzer",        showActiveBuzzerSetting, adjustActiveBuzzerSetting, confirmActiveBuzzerSetting },
   { "Inactive Buzzer",      showInactiveBuzzerSetting, adjustInactiveBuzzerSetting, confirmInactiveBuzzerSetting },
-  { "Motor Speed",          showMotorSpeed,          adjustMotorSpeed,          confirmMotorSpeed }
+  { "Motor Speed",          showMotorSpeed,          adjustMotorSpeed,          confirmMotorSpeed },
+  { "Solo Mode",            showSoloMode,            adjustSoloMode,            confirmSoloMode }
 };
 
 int totalMenus = sizeof(menuItems) / sizeof(MenuItem);
@@ -593,13 +608,31 @@ void adjustMotorSpeed() {
 void confirmMotorSpeed() {
   showMotorSpeed();
 }
+
+// ---------------- SOLO MODE ----------------
+void showSoloMode() {
+  Serial.print("Solo Mode: ");
+  Serial.println(soloMode ? "ON" : "OFF");
+}
+void adjustSoloMode() {
+  setSoloMode(!soloMode);
+  showSoloMode();
+  beepBuzzer(soloMode ? 2 : 1, 100, 100);
+}
+void confirmSoloMode() {
+  Serial.print("Solo Mode ");
+  Serial.println(soloMode ? "enabled." : "disabled.");
+  showSoloMode();
+}
 // ==================================================================
 
 
 // === RGB LED CONTROL ==============================================
 void updateRGBModeFromBoxState() {
-  // Set currentRGBMode based on whether this box is active or inactive
-  if (active_box == BOX_NAME) {
+  if (soloMode) {
+    bool switchState = (digitalRead(SWITCH_PIN) == HIGH);
+    currentRGBMode = (switchState || motorShouldRun) ? activeRGBSetting : inactiveRGBSetting;
+  } else if (active_box == BOX_NAME) {
     // This box is active
     currentRGBMode = activeRGBSetting;
   } else {
@@ -781,7 +814,23 @@ void handleSwitchDetection() {
     switch_forward = switchState;
     stateChanged = true;
 
-    if (switchState == HIGH) {
+    if (soloMode) {
+      if (switchState == HIGH) {
+        Serial.println("⚡ Solo Mode ON — local activation only.");
+        currentRGBMode = activeRGBSetting;
+        applyRGBMode();
+        triggerBuzzerPattern(activeBuzzerSetting);
+      } else {
+        Serial.println("⚡ Solo Mode OFF position — local box inactive.");
+        currentRGBMode = inactiveRGBSetting;
+        applyRGBMode();
+        triggerBuzzerPattern(inactiveBuzzerSetting);
+      }
+
+      if (active_box == BOX_NAME) {
+        setActiveBox("NONE");
+      }
+    } else if (switchState == HIGH) {
       // Switch turned ON: always claim active and play active buzzer + LED
       Serial.println("⚡ Switch ON — claiming this box as Active.");
       currentRGBMode = activeRGBSetting;
@@ -824,10 +873,12 @@ void handleSwitchDetection() {
 void modifyMotorState(bool switchState, bool limitState) {
   Serial.println("Modifying motor state...");
   
+  bool shouldRunForward = (switchState == HIGH) && (soloMode || active_box != BOX_NAME);
+
   // Determine desired motor state
-  if (switchState == HIGH && active_box != BOX_NAME) {
+  if (shouldRunForward) {
     // Forward direction — limit switch ignored
-    Serial.println("Forward");
+    Serial.println(soloMode ? "Forward (Solo Mode)" : "Forward");
     motorDirection = 1;
     motorShouldRun = true;
     lastMotorPWMUpdate = millis();
@@ -912,6 +963,12 @@ void setActiveBox(String box) {
 void onActiveBoxChange()  {
   Serial.print("Active Box Changed to: ");
   Serial.println(active_box);
+
+  if (soloMode) {
+    Serial.println("Solo Mode is enabled — ignoring shared active_box changes.");
+    return;
+  }
+
   // Set stateChanged to true. This causes modifyMotorState() to run on the next loop even with not changes to 
   // switch positions which will trigger the motor to run based on the active_box variable and the current switch positions
   stateChanged = true; 
