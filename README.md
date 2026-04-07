@@ -54,6 +54,10 @@ I am currently developing in VSCode using the PlatformIO extension. I started in
 
 When running the code from this repository, all you should need to do is clone the repo, and then ensure you have Arduino ESP32 Boards by Arduino (2.0.18-arduino.5) installed in the ArduinoIDE, and the ArduinoIoTCloud by Arduino (2.8.0) library installed. Once these (And all dependencies) are installed in the ArduinoIDE, the project should build with PlatformIO in VSCode (Knock on Wood)
 
+For Over The Air Uploads for new versions, follow this guide:
+
+[Over The Air Uploads](./ota/ota-how-to-make-a-new-release.md)
+
 ---
 
 ## ⚡ Step 2: Assemble the Circuit
@@ -277,24 +281,18 @@ I can upgrade from Arduino Cloud to a different free option in the future such a
 
 #### Tweaks / Features
 
-[] Print and assemble final box in V5 with correct color
-
-[x] Ensure the correct state is loaded when turning on the box (I.e. LED)
-
-[x]  Update munu items as we scroll through them
-
-[x] Play Buzzer sound Previews as we scroll through them (Loop should end quickly)
-
-[x] Make the menu navigation obvious with beeps or lights
-
-[] Add more buzzer patterns (+ make it easy and modular to add more custom buzzer and led patters)
-
-[] Clean up code (Organize where variables and defaults are declared)
+* [X] Print and assemble final box in V5 with correct color
+* [X] Ensure the correct state is loaded when turning on the box (I.e. LED)
+* [X] Update munu items as we scroll through them
+* [X] Play Buzzer sound Previews as we scroll through them (Loop should end quickly)
+* [X] Make the menu navigation obvious with beeps or lights
+* [ ] Add more buzzer and led patterns (+ make it easy and modular to add more custom buzzer and led patters)
+* [ ] Clean up code (Organize where variables and defaults are declared)
 
 #### Deployment Features
 
-* [] (Optional) Setup Over-The-Air updates so the software can be modified
-* [] Setup wifi connection process so that devices can be easily set up
+* [X] (Optional) Setup Over-The-Air updates so the software can be modified
+* [X] Setup wifi connection process so that devices can be easily set up
 
 ##### ✅ Notes
 
