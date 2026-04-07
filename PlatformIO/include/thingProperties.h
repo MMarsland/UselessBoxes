@@ -4,9 +4,6 @@
 #include <Arduino_ConnectionHandler.h> 
 
 const char DEVICE_LOGIN_NAME[]  = SECRET_DEVICE_ID;
-
-const char SSID[]               = SECRET_SSID;    // Network SSID (name)
-const char PASS[]               = SECRET_OPTIONAL_PASS;    // Network password (use for WPA, or use as key for WEP)
 const char DEVICE_KEY[]         = SECRET_DEVICE_KEY;    // Secret device password
 
 void onActiveBoxChange();
@@ -18,6 +15,8 @@ String ota_target;
 
 String active_box;
 
+void connectToPreferredWiFi();
+
 void initProperties(){
 
   ArduinoCloud.setBoardId(DEVICE_LOGIN_NAME);
@@ -28,4 +27,4 @@ void initProperties(){
 
 }
 
-WiFiConnectionHandler ArduinoIoTPreferredConnection(SSID, PASS);
+WiFiConnectionHandler ArduinoIoTPreferredConnection;

@@ -98,6 +98,9 @@ namespace {
   unsigned long lastMotorPWMUpdate = 0;
   bool motorPWMEnabled = false;  // Current state of PWM (on or off)
   const unsigned long MOTOR_PWM_CYCLE_TIME = 10;  // 20ms total cycle
+
+  constexpr unsigned long WIFI_CONNECT_TIMEOUT_MS = 10000;
+  constexpr unsigned long WIFI_CONNECT_RETRY_MS = 250;
 }
 
 // Preferences (non-volatile storage) instance
@@ -120,6 +123,50 @@ constexpr char OTA_MANIFEST_URL[] = "";
 
 void handleOTACheck();
 void checkForOTAUpdate();
+
+void connectToPreferredWiFi() {
+  Serial.println("Attempting Wi-Fi connection...");
+  WiFi.mode(WIFI_STA);
+
+  for (int i = 0; i < SECRET_WIFI_COUNT; ++i) {
+    const SecretWiFiCredential& network = SECRET_WIFI_NETWORKS[i];
+    const char* ssid = network.ssid;
+    const char* pass = network.password;
+
+    Serial.print("Trying Wi-Fi [");
+    Serial.print(i + 1);
+    Serial.print("/");
+    Serial.print(SECRET_WIFI_COUNT);
+    Serial.print("]: ");
+    Serial.println(ssid);
+
+    ArduinoIoTPreferredConnection = decltype(ArduinoIoTPreferredConnection)(ssid, pass);
+
+    WiFi.disconnect(true, true);
+    delay(100);
+    WiFi.begin(ssid, pass);
+
+    unsigned long attemptStarted = millis();
+    while (WiFi.status() != WL_CONNECTED && millis() - attemptStarted < WIFI_CONNECT_TIMEOUT_MS) {
+      delay(WIFI_CONNECT_RETRY_MS);
+      Serial.print(".");
+    }
+    Serial.println();
+
+    if (WiFi.status() == WL_CONNECTED) {
+      Serial.print("Connected to Wi-Fi: ");
+      Serial.println(ssid);
+      Serial.print("IP address: ");
+      Serial.println(WiFi.localIP());
+      return;
+    }
+
+    Serial.print("Failed to connect to: ");
+    Serial.println(ssid);
+  }
+
+  Serial.println("No configured Wi-Fi networks connected. Arduino Cloud will keep retrying the last network.");
+}
 
 // ------------------------------------------------------------------
 // Setter implementations (validate and apply side-effects)
@@ -196,6 +243,7 @@ void setup() {
 
   // Defined in thingProperties.h
   initProperties();
+  connectToPreferredWiFi();
 
   // Connect to Arduino IoT Cloud
   ArduinoCloud.begin(ArduinoIoTPreferredConnection);

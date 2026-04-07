@@ -5,6 +5,11 @@
 #ifndef ARDUINO_SECRETS_H
     #define ARDUINO_SECRETS_H
 
+    struct SecretWiFiCredential {
+        const char* ssid;
+        const char* password;
+    };
+
     #if defined(BOARD_TREVOR)
         #include "arduino_secrets_trevor.h"
     #elif defined(BOARD_MICHAEL)
