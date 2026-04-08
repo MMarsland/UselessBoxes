@@ -1,4 +1,4 @@
-/* 
+﻿/* 
   Useless Boxes - Core Logic
   -------------------------
   Handles main loop, button input, motor control, RGB and buzzer management,
@@ -391,7 +391,7 @@ static Preferences prefs;
 // OTA via GitHub Releases
 // ------------------------------------------------------------------
 constexpr unsigned long OTA_CHECK_INTERVAL_MS = 60UL * 60UL * 1000UL; // 1 hour
-constexpr char CURRENT_FW_VERSION[] = "v1.0.1"; // Bump this for each release
+constexpr char CURRENT_FW_VERSION[] = "v1.1.1"; // Bump this for each release
 unsigned long lastOTACheck = 0;
 
 #if defined(BOARD_MICHAEL)
