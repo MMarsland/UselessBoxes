@@ -158,6 +158,62 @@ namespace {
     return showRed ? makeRGBColor(255, 0, 0) : makeRGBColor(0, 0, 255);
   }
 
+  RGBColor renderSunset(unsigned long now) {
+    const float cycle = (now % 6000UL) / 6000.0f;
+    const float wave = (sin(cycle * TWO_PI) + 1.0f) * 0.5f;
+    const uint8_t red = static_cast<uint8_t>(180.0f + (wave * 75.0f));
+    const uint8_t green = static_cast<uint8_t>(40.0f + (wave * 70.0f));
+    const uint8_t blue = static_cast<uint8_t>(10.0f + ((1.0f - wave) * 40.0f));
+    return makeRGBColor(red, green, blue);
+  }
+
+  RGBColor renderAurora(unsigned long now) {
+    const float phase = now / 900.0f;
+    const uint8_t red = static_cast<uint8_t>(25.0f + ((sin(phase * 0.9f) + 1.0f) * 45.0f));
+    const uint8_t green = static_cast<uint8_t>(80.0f + ((sin(phase * 1.3f) + 1.0f) * 85.0f));
+    const uint8_t blue = static_cast<uint8_t>(90.0f + ((sin((phase * 1.1f) + 1.7f) + 1.0f) * 75.0f));
+    return makeRGBColor(red, green, blue);
+  }
+
+  RGBColor renderFireFlicker(unsigned long now) {
+    const float fast = (sin(now / 70.0f) + 1.0f) * 0.5f;
+    const float slow = (sin((now / 190.0f) + 1.3f) + 1.0f) * 0.5f;
+    const uint8_t red = static_cast<uint8_t>(180.0f + (fast * 75.0f));
+    const uint8_t green = static_cast<uint8_t>(35.0f + (slow * 90.0f));
+    const uint8_t blue = static_cast<uint8_t>(fast * 25.0f);
+    return makeRGBColor(red, green, blue);
+  }
+
+  RGBColor renderCyberPulse(unsigned long now) {
+    const float cycle = (now % 1800UL) / 1800.0f;
+    const float pulse = pow((sin(cycle * TWO_PI) + 1.0f) * 0.5f, 2.0f);
+    const uint8_t red = static_cast<uint8_t>(10.0f + (pulse * 35.0f));
+    const uint8_t green = static_cast<uint8_t>(90.0f + (pulse * 80.0f));
+    const uint8_t blue = static_cast<uint8_t>(120.0f + (pulse * 100.0f));
+    return makeRGBColor(red, green, blue);
+  }
+
+  RGBColor renderParty(unsigned long now) {
+    const unsigned long frame = (now / 90UL) % 6UL;
+    switch (frame) {
+      case 0: return makeRGBColor(255, 0, 120);
+      case 1: return makeRGBColor(0, 255, 80);
+      case 2: return makeRGBColor(0, 160, 255);
+      case 3: return makeRGBColor(255, 180, 0);
+      case 4: return makeRGBColor(180, 0, 255);
+      default: return makeRGBColor(255, 30, 30);
+    }
+  }
+
+  RGBColor renderLaser(unsigned long now) {
+    const float sweep = (sin(now / 120.0f) + 1.0f) * 0.5f;
+    const float sparkle = (sin((now / 40.0f) + 1.2f) + 1.0f) * 0.5f;
+    const uint8_t red = static_cast<uint8_t>(180.0f + (sweep * 75.0f));
+    const uint8_t green = static_cast<uint8_t>(sparkle * 40.0f);
+    const uint8_t blue = static_cast<uint8_t>(sparkle * 20.0f);
+    return makeRGBColor(red, green, blue);
+  }
+
   const RGBPatternDefinition RGB_PATTERN_DEFINITIONS[] = {
     makeRGBPattern("OFF", renderOff),
     makeRGBPattern("WHITE", renderWhite),
@@ -166,7 +222,13 @@ namespace {
     makeRGBPattern("RED", renderSolidRed),
     makeRGBPattern("GREEN", renderSolidGreen),
     makeRGBPattern("BLUE", renderSolidBlue),
-    makeRGBPattern("POLICE", renderPolice)
+    makeRGBPattern("POLICE", renderPolice),
+    makeRGBPattern("SUNSET", renderSunset),
+    makeRGBPattern("AURORA", renderAurora),
+    makeRGBPattern("FIRE FLICKER", renderFireFlicker),
+    makeRGBPattern("CYBERPULSE", renderCyberPulse),
+    makeRGBPattern("PARTY", renderParty),
+    makeRGBPattern("LASER", renderLaser)
   };
 
   const BuzzerToneStep BUZZER_STEPS_SINGLE[] = {
@@ -183,10 +245,17 @@ namespace {
     { 1000, BUZZER_INTERVAL, BUZZER_INTERVAL }
   };
 
+  constexpr uint16_t MORSE_UNIT_MS = 120;
   const BuzzerToneStep BUZZER_STEPS_SOS[] = {
-    { 900, 150, 150 }, { 900, 150, 150 }, { 900, 150, 250 },
-    { 900, 450, 150 }, { 900, 450, 150 }, { 900, 450, 250 },
-    { 900, 150, 150 }, { 900, 150, 150 }, { 900, 150, 0 }
+    { 900, MORSE_UNIT_MS, MORSE_UNIT_MS },
+    { 900, MORSE_UNIT_MS, MORSE_UNIT_MS },
+    { 900, MORSE_UNIT_MS, MORSE_UNIT_MS * 3 },
+    { 900, MORSE_UNIT_MS * 3, MORSE_UNIT_MS },
+    { 900, MORSE_UNIT_MS * 3, MORSE_UNIT_MS },
+    { 900, MORSE_UNIT_MS * 3, MORSE_UNIT_MS * 3 },
+    { 900, MORSE_UNIT_MS, MORSE_UNIT_MS },
+    { 900, MORSE_UNIT_MS, MORSE_UNIT_MS },
+    { 900, MORSE_UNIT_MS, 0 }
   };
 
   const BuzzerToneStep BUZZER_STEPS_DOUBLE[] = {
@@ -194,15 +263,61 @@ namespace {
     { 1400, 110, 0 }
   };
 
+  const BuzzerToneStep BUZZER_STEPS_FANFARE[] = {
+    { 988, 110, 40 },
+    { 988, 110, 40 },
+    { 988, 110, 80 },
+    { 1319, 320, 0 }
+  };
+
+  const BuzzerToneStep BUZZER_STEPS_SAD_TROMBONE[] = {
+    { 659, 150, 15 },
+    { 622, 170, 15 },
+    { 554, 220, 20 },
+    { 440, 420, 0 }
+  };
+
+  const BuzzerToneStep BUZZER_STEPS_LEVEL_UP[] = {
+    { 523, 90, 30 },
+    { 659, 90, 30 },
+    { 784, 100, 30 },
+    { 1047, 180, 0 }
+  };
+
+  const BuzzerToneStep BUZZER_STEPS_GAME_OVER[] = {
+    { 784, 120, 20 },
+    { 659, 130, 20 },
+    { 523, 150, 30 },
+    { 392, 300, 0 }
+  };
+
+  const BuzzerToneStep BUZZER_STEPS_COIN[] = {
+    { 988, 70, 20 },
+    { 1319, 130, 0 }
+  };
+
+  const BuzzerToneStep BUZZER_STEPS_POWER_UP[] = {
+    { 440, 70, 20 },
+    { 554, 70, 20 },
+    { 659, 80, 20 },
+    { 880, 110, 0 }
+  };
+
   // Add new buzzer patterns in one place: define the step sequence,
-  // then add one entry here. Menu labels and playback pick it up automatically.
+  // then add one entry here in the EXACT same order as enum `BuzzerPattern`.
   const BuzzerPatternDefinition BUZZER_PATTERN_DEFINITIONS[] = {
     { "OFF", nullptr, 0, false },
     { "SINGLE", BUZZER_STEPS_SINGLE, arrayCount(BUZZER_STEPS_SINGLE), false },
     { "CHIRP", BUZZER_STEPS_CHIRP, arrayCount(BUZZER_STEPS_CHIRP), false },
     { "LOOP", BUZZER_STEPS_LOOP, arrayCount(BUZZER_STEPS_LOOP), true },
     { "SOS", BUZZER_STEPS_SOS, arrayCount(BUZZER_STEPS_SOS), false },
-    { "DOUBLE", BUZZER_STEPS_DOUBLE, arrayCount(BUZZER_STEPS_DOUBLE), false }
+    { "DOUBLE", BUZZER_STEPS_DOUBLE, arrayCount(BUZZER_STEPS_DOUBLE), false },
+    { "FANFARE", BUZZER_STEPS_FANFARE, arrayCount(BUZZER_STEPS_FANFARE), false },
+    { "SAD TROMBONE", BUZZER_STEPS_SAD_TROMBONE, arrayCount(BUZZER_STEPS_SAD_TROMBONE), false },
+    { "LEVEL UP", BUZZER_STEPS_LEVEL_UP, arrayCount(BUZZER_STEPS_LEVEL_UP), false },
+    { "GAME OVER", BUZZER_STEPS_GAME_OVER, arrayCount(BUZZER_STEPS_GAME_OVER), false },
+    { "COIN", BUZZER_STEPS_COIN, arrayCount(BUZZER_STEPS_COIN), false },
+    { "POWER UP", BUZZER_STEPS_POWER_UP, arrayCount(BUZZER_STEPS_POWER_UP), false },
   };
 
   static_assert(arrayCount(RGB_PATTERN_DEFINITIONS) == RGB_MODE_COUNT,

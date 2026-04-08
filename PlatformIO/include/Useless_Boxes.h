@@ -59,6 +59,12 @@ enum RGBMode {
   RGB_SOLID_GREEN,
   RGB_SOLID_BLUE,
   RGB_POLICE,
+  RGB_SUNSET,
+  RGB_AURORA,
+  RGB_FIRE_FLICKER,
+  RGB_CYBERPULSE,
+  RGB_PARTY,
+  RGB_LASER,
   RGB_MODE_COUNT  // Add new RGB patterns above this line, then register a `name + RGBColor render(unsigned long now)` pair in `RGB_PATTERN_DEFINITIONS` in `src/Useless_Boxes.cpp`
 };
 
@@ -82,6 +88,12 @@ enum BuzzerPattern {
   BUZZER_LOOP,
   BUZZER_SOS,
   BUZZER_DOUBLE,
+  BUZZER_FANFARE,
+  BUZZER_SAD_TROMBONE,
+  BUZZER_LEVEL_UP,
+  BUZZER_GAME_OVER,
+  BUZZER_COIN,
+  BUZZER_POWER_UP,
   BUZZER_PATTERN_COUNT  // Add new buzzer patterns above this line, then register them in `BUZZER_PATTERN_DEFINITIONS` in `src/Useless_Boxes.cpp`
 };
 
