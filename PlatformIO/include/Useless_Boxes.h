@@ -58,7 +58,7 @@ enum RGBMode {
   RGB_SOLID_RED,
   RGB_SOLID_GREEN,
   RGB_SOLID_BLUE,
-  RGB_MODE_COUNT
+  RGB_MODE_COUNT  // Add new RGB patterns above this line, then register them in `RGB_PATTERN_DEFINITIONS` in `src/Useless_Boxes.cpp`
 };
 
 // Board on-board status LED not currently configurable — always off
@@ -80,13 +80,13 @@ enum BuzzerPattern {
   BUZZER_CHIRP,
   BUZZER_LOOP,
   BUZZER_SOS,
-  BUZZER_PATTERN_COUNT
+  BUZZER_PATTERN_COUNT  // Add new buzzer patterns above this line, then register them in `BUZZER_PATTERN_DEFINITIONS` in `src/Useless_Boxes.cpp`
 };
 
 extern int currentBuzzerPattern;    // playback state for active buzzer pattern (played by presets)
-extern bool buzzerState;           // internal on/off used by loops
-extern unsigned long buzzerLast;   // last toggle time
-extern unsigned int buzzerStep;    // step in sequence
+extern bool buzzerState;           // internal playback state (tone currently active)
+extern unsigned long buzzerLast;   // last transition time
+extern unsigned int buzzerStep;    // step in the current pattern sequence
 
 constexpr unsigned long BUZZER_INTERVAL = 250; // ms
 

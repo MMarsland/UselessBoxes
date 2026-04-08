@@ -59,19 +59,157 @@ bool soloMode = false; // When true, this box ignores shared activation and runs
 // Buzzer state
 // ------------------------------------------------------------------
 int currentBuzzerPattern = BUZZER_OFF;    // active buzzer pattern playback state
-bool buzzerState = false;           // on/off state for looping patterns
-unsigned long buzzerLast = 0;       // last toggle time
+bool buzzerState = false;           // true while a buzzer tone is currently playing
+unsigned long buzzerLast = 0;       // last playback state change
 unsigned int buzzerStep = 0;        // step in sequence
-bool buzzerDemo = false;      // true when playing a demo pattern (i.e. for a second
-unsigned long buzzerDemoStart = 0; // start time of demo pattern
+bool buzzerDemo = false;            // true when playing a temporary demo pattern
+unsigned long buzzerDemoStart = 0;  // start time of demo pattern
 constexpr unsigned long BUZZER_DEMO_DURATION = 5000; // ms
 
 // ------------------------------------------------------------------
 // File-local internal state (kept private to this .cpp)
 // ------------------------------------------------------------------
 namespace {
+  template <typename T, size_t N>
+  constexpr size_t arrayCount(const T (&)[N]) {
+    return N;
+  }
+
+  struct RGBPatternDefinition {
+    const char* name;
+    uint8_t red;
+    uint8_t green;
+    uint8_t blue;
+    void (*update)(unsigned long now);
+  };
+
+  struct BuzzerToneStep {
+    uint16_t frequency;
+    uint16_t durationMs;
+    uint16_t pauseAfterMs;
+  };
+
+  struct BuzzerPatternDefinition {
+    const char* name;
+    const BuzzerToneStep* steps;
+    size_t stepCount;
+    bool loops;
+  };
+
+  enum BuzzerPlaybackPhase : uint8_t {
+    BUZZER_PHASE_START_NOTE,
+    BUZZER_PHASE_PLAYING_NOTE,
+    BUZZER_PHASE_NOTE_GAP
+  };
+
+  // Add new RGB patterns in one place: extend the enum in the header,
+  // then add one entry here (plus an update callback if it animates).
+  void updateRainbowAnimation(unsigned long now) {
+    if (now - lastRGBAnimation < RGB_UPDATE_INTERVAL) {
+      return;
+    }
+
+    lastRGBAnimation = now;
+    int r = (sin((rainbowPos) * 0.05) * 127) + 128;
+    int g = (sin((rainbowPos * 2) * 0.05) * 127) + 128;
+    int b = (sin((rainbowPos * 3) * 0.05) * 127) + 128;
+    setRGB(r, g, b);
+    ++rainbowPos;
+  }
+
+  void updateBreathingAnimation(unsigned long now) {
+    if (now - lastRGBAnimation < RGB_UPDATE_INTERVAL) {
+      return;
+    }
+
+    lastRGBAnimation = now;
+    breathValue += breathDir * 2;
+
+    if (breathValue >= 250) {
+      breathValue = 250;
+      breathDir = -1;
+    }
+
+    if (breathValue <= 5) {
+      breathValue = 5;
+      breathDir = 1;
+    }
+
+    setRGB(breathValue, breathValue, breathValue);
+  }
+
+  const RGBPatternDefinition RGB_PATTERN_DEFINITIONS[] = {
+    { "OFF",       0,   0,   0,   nullptr },
+    { "WHITE",     255, 255, 255, nullptr },
+    { "RAINBOW",   0,   0,   0,   updateRainbowAnimation },
+    { "BREATHING", 0,   0,   0,   updateBreathingAnimation },
+    { "RED",       255, 0,   0,   nullptr },
+    { "GREEN",     0,   255, 0,   nullptr },
+    { "BLUE",      0,   0,   255, nullptr }
+  };
+
+  const BuzzerToneStep BUZZER_STEPS_SINGLE[] = {
+    { 1000, 120, 0 }
+  };
+
+  const BuzzerToneStep BUZZER_STEPS_CHIRP[] = {
+    { 800, 120, 50 },
+    { 1200, 120, 50 },
+    { 800, 120, 0 }
+  };
+
+  const BuzzerToneStep BUZZER_STEPS_LOOP[] = {
+    { 1000, BUZZER_INTERVAL, BUZZER_INTERVAL }
+  };
+
+  const BuzzerToneStep BUZZER_STEPS_SOS[] = {
+    { 900, 150, 150 }, { 900, 150, 150 }, { 900, 150, 250 },
+    { 900, 450, 150 }, { 900, 450, 150 }, { 900, 450, 250 },
+    { 900, 150, 150 }, { 900, 150, 150 }, { 900, 150, 0 }
+  };
+
+  // Add new buzzer patterns in one place: define the step sequence,
+  // then add one entry here. Menu labels and playback pick it up automatically.
+  const BuzzerPatternDefinition BUZZER_PATTERN_DEFINITIONS[] = {
+    { "OFF", nullptr, 0, false },
+    { "SINGLE", BUZZER_STEPS_SINGLE, arrayCount(BUZZER_STEPS_SINGLE), false },
+    { "CHIRP", BUZZER_STEPS_CHIRP, arrayCount(BUZZER_STEPS_CHIRP), false },
+    { "LOOP", BUZZER_STEPS_LOOP, arrayCount(BUZZER_STEPS_LOOP), true },
+    { "SOS", BUZZER_STEPS_SOS, arrayCount(BUZZER_STEPS_SOS), false }
+  };
+
+  static_assert(arrayCount(RGB_PATTERN_DEFINITIONS) == RGB_MODE_COUNT,
+                "RGB pattern table must stay in sync with RGBMode");
+  static_assert(arrayCount(BUZZER_PATTERN_DEFINITIONS) == BUZZER_PATTERN_COUNT,
+                "Buzzer pattern table must stay in sync with BuzzerPattern");
+
+  int clampRGBMode(int mode) {
+    return (mode >= 0 && mode < RGB_MODE_COUNT) ? mode : RGB_OFF;
+  }
+
+  int clampBuzzerPattern(int pattern) {
+    return (pattern >= 0 && pattern < BUZZER_PATTERN_COUNT) ? pattern : BUZZER_OFF;
+  }
+
+  const RGBPatternDefinition& getRGBPatternDefinition(int mode) {
+    return RGB_PATTERN_DEFINITIONS[clampRGBMode(mode)];
+  }
+
+  const BuzzerPatternDefinition& getBuzzerPatternDefinition(int pattern) {
+    return BUZZER_PATTERN_DEFINITIONS[clampBuzzerPattern(pattern)];
+  }
+
+  const char* getRGBModeName(int mode) {
+    return getRGBPatternDefinition(mode).name;
+  }
+
+  const char* getBuzzerPatternName(int pattern) {
+    return getBuzzerPatternDefinition(pattern).name;
+  }
+
   int menuIndex = 0;
   bool inSubMenu = false;
+  BuzzerPlaybackPhase buzzerPlaybackPhase = BUZZER_PHASE_START_NOTE;
 
   // Button tracking
   bool settingsButtonState = HIGH;
@@ -180,12 +318,12 @@ void setMotorUpdateInterval(unsigned long ms) { MOTOR_UPDATE_INTERVAL = ms; }
 
 // ===== Active/Inactive preset setters =====
 void setActiveRGBSetting(int mode) {
-  activeRGBSetting = mode;
+  activeRGBSetting = clampRGBMode(mode);
   prefs.putInt("active_rgb", activeRGBSetting);
 }
 
 void setInactiveRGBSetting(int mode) {
-  inactiveRGBSetting = mode;
+  inactiveRGBSetting = clampRGBMode(mode);
   prefs.putInt("inactive_rgb", inactiveRGBSetting);
 }
 
@@ -198,12 +336,12 @@ void setRGBBrightness(int percent) {
 }
 
 void setActiveBuzzerSetting(int pattern) {
-  activeBuzzerSetting = pattern;
+  activeBuzzerSetting = clampBuzzerPattern(pattern);
   prefs.putInt("active_buzzer", activeBuzzerSetting);
 }
 
 void setInactiveBuzzerSetting(int pattern) {
-  inactiveBuzzerSetting = pattern;
+  inactiveBuzzerSetting = clampBuzzerPattern(pattern);
   prefs.putInt("inactive_buzzer", inactiveBuzzerSetting);
 }
 
@@ -230,11 +368,11 @@ void setSoloMode(bool enabled) {
 // Load persisted settings (call during setup after prefs.begin())
 void loadPersistentSettings() {
   // Active/Inactive presets
-  activeRGBSetting = (RGBMode)prefs.getInt("active_rgb", activeRGBSetting);
-  inactiveRGBSetting = (RGBMode)prefs.getInt("inactive_rgb", inactiveRGBSetting);
+  activeRGBSetting = clampRGBMode(prefs.getInt("active_rgb", activeRGBSetting));
+  inactiveRGBSetting = clampRGBMode(prefs.getInt("inactive_rgb", inactiveRGBSetting));
   rgb_brightness_percentage = prefs.getInt("rgb_brightness", rgb_brightness_percentage);
-  activeBuzzerSetting = prefs.getInt("active_buzzer", activeBuzzerSetting);
-  inactiveBuzzerSetting = prefs.getInt("inactive_buzzer", inactiveBuzzerSetting);
+  activeBuzzerSetting = clampBuzzerPattern(prefs.getInt("active_buzzer", activeBuzzerSetting));
+  inactiveBuzzerSetting = clampBuzzerPattern(prefs.getInt("inactive_buzzer", inactiveBuzzerSetting));
   motorSpeed = prefs.getInt("motor_speed", motorSpeed);
   soloMode = prefs.getBool("solo_mode", soloMode);
   // initialize buzzer runtime state
@@ -480,16 +618,7 @@ void showMenu() {
 // ---------------- ACTIVE RGB PRESET ----------------
 void showActiveRGB() {
   Serial.print("Active RGB Mode: ");
-  switch(activeRGBSetting) {
-    case RGB_OFF:        Serial.println("OFF"); break;
-    case RGB_WHITE:      Serial.println("WHITE"); break;
-    case RGB_RAINBOW:    Serial.println("RAINBOW"); break;
-    case RGB_BREATHING:  Serial.println("BREATHING"); break;
-    case RGB_SOLID_RED:  Serial.println("RED"); break;
-    case RGB_SOLID_GREEN:Serial.println("GREEN"); break;
-    case RGB_SOLID_BLUE: Serial.println("BLUE"); break;
-    default:             Serial.println("UNKNOWN"); break;
-  }
+  Serial.println(getRGBModeName(activeRGBSetting));
 }
 void adjustActiveRGB() {
   activeRGBSetting = (activeRGBSetting + 1) % RGB_MODE_COUNT;
@@ -507,16 +636,7 @@ void confirmActiveRGB() {
 // ---------------- INACTIVE RGB PRESET ----------------
 void showInactiveRGB() {
   Serial.print("Inactive RGB Mode: ");
-  switch(inactiveRGBSetting) {
-    case RGB_OFF:        Serial.println("OFF"); break;
-    case RGB_WHITE:      Serial.println("WHITE"); break;
-    case RGB_RAINBOW:    Serial.println("RAINBOW"); break;
-    case RGB_BREATHING:  Serial.println("BREATHING"); break;
-    case RGB_SOLID_RED:  Serial.println("RED"); break;
-    case RGB_SOLID_GREEN:Serial.println("GREEN"); break;
-    case RGB_SOLID_BLUE: Serial.println("BLUE"); break;
-    default:             Serial.println("UNKNOWN"); break;
-  }
+  Serial.println(getRGBModeName(inactiveRGBSetting));
 }
 void adjustInactiveRGB() {
   inactiveRGBSetting = (inactiveRGBSetting + 1) % RGB_MODE_COUNT;
@@ -551,14 +671,7 @@ void confirmRGBBrightness() {
 // ---------------- ACTIVE BUZZER PRESET ----------------
 void showActiveBuzzerSetting() {
   Serial.print("Active Buzzer: ");
-  switch(activeBuzzerSetting) {
-    case BUZZER_OFF:    Serial.println("OFF"); break;
-    case BUZZER_SINGLE: Serial.println("SINGLE"); break;
-    case BUZZER_CHIRP:  Serial.println("CHIRP"); break;
-    case BUZZER_LOOP:   Serial.println("LOOP"); break;
-    case BUZZER_SOS:    Serial.println("SOS"); break;
-    default:            Serial.println("UNKNOWN"); break;
-  }
+  Serial.println(getBuzzerPatternName(activeBuzzerSetting));
 }
 void adjustActiveBuzzerSetting() {
   activeBuzzerSetting = (activeBuzzerSetting + 1) % BUZZER_PATTERN_COUNT;
@@ -573,14 +686,7 @@ void confirmActiveBuzzerSetting() {
 // ---------------- INACTIVE BUZZER PRESET ----------------
 void showInactiveBuzzerSetting() {
   Serial.print("Inactive Buzzer: ");
-  switch(inactiveBuzzerSetting) {
-    case BUZZER_OFF:    Serial.println("OFF"); break;
-    case BUZZER_SINGLE: Serial.println("SINGLE"); break;
-    case BUZZER_CHIRP:  Serial.println("CHIRP"); break;
-    case BUZZER_LOOP:   Serial.println("LOOP"); break;
-    case BUZZER_SOS:    Serial.println("SOS"); break;
-    default:            Serial.println("UNKNOWN"); break;
-  }
+  Serial.println(getBuzzerPatternName(inactiveBuzzerSetting));
 }
 void adjustInactiveBuzzerSetting() {
   inactiveBuzzerSetting = (inactiveBuzzerSetting + 1) % BUZZER_PATTERN_COUNT;
@@ -654,56 +760,31 @@ void setRGB(uint8_t r, uint8_t g, uint8_t b) {
 }
 
 void applyRGBMode() {
-  switch (currentRGBMode) {
-    case RGB_OFF:
-      setRGB(0,0,0);
-      break;
-    case RGB_WHITE:
-      setRGB(255,255,255);
-      break;
-    case RGB_SOLID_RED:
-      setRGB(255,0,0);
-      break;
-    case RGB_SOLID_GREEN:
-      setRGB(0,255,0);
-      break;
-    case RGB_SOLID_BLUE:
-      setRGB(0,0,255);
-      break;
-    case RGB_RAINBOW:
-    case RGB_BREATHING:
-      // handled in updateAnimations()
-      break;
+  const RGBPatternDefinition& pattern = getRGBPatternDefinition(currentRGBMode);
+
+  if (pattern.update == nullptr) {
+    setRGB(pattern.red, pattern.green, pattern.blue);
+    return;
   }
+
+  pattern.update(millis() + RGB_UPDATE_INTERVAL);
 }
 
 void updateAnimations() {
-  unsigned long now = millis();
-  
-  if (currentRGBMode == RGB_RAINBOW && now - lastRGBAnimation > RGB_UPDATE_INTERVAL) {
-    lastRGBAnimation = now;
-    int r = (sin((rainbowPos) * 0.05) * 127) + 128;
-    int g = (sin((rainbowPos*2) * 0.05) * 127) + 128;
-    int b = (sin((rainbowPos*3) * 0.05) * 127) + 128;
-    setRGB(r,g,b);
-    rainbowPos++;
-  }
+  const RGBPatternDefinition& pattern = getRGBPatternDefinition(currentRGBMode);
 
-  if (currentRGBMode == RGB_BREATHING && now - lastRGBAnimation > RGB_UPDATE_INTERVAL) {
-    lastRGBAnimation = now;
-    breathValue += breathDir * 2; // adjust speed
-    if (breathValue >= 250) breathDir = -1;
-    if (breathValue <= 5) breathDir = 1;
-    setRGB(breathValue, breathValue, breathValue);
+  if (pattern.update != nullptr) {
+    pattern.update(millis());
   }
 }
 
 
 // === BUZZER CONTROL ===============================================
 void triggerBuzzerPattern(int pattern) {
-  currentBuzzerPattern = pattern;
+  currentBuzzerPattern = clampBuzzerPattern(pattern);
   buzzerStep = 0;
   buzzerState = false;
+  buzzerPlaybackPhase = BUZZER_PHASE_START_NOTE;
   buzzerLast = millis();
   noTone(BUZZER_PIN);
 }
@@ -727,6 +808,7 @@ void stopBuzzer() {
   currentBuzzerPattern = BUZZER_OFF;
   buzzerStep = 0;
   buzzerState = false;
+  buzzerPlaybackPhase = BUZZER_PHASE_START_NOTE;
   noTone(BUZZER_PIN);
 }
 
@@ -734,72 +816,59 @@ void stopBuzzer() {
 void updateBuzzerAlarm() {
   unsigned long now = millis();
 
-  if (now - buzzerDemoStart >= BUZZER_DEMO_DURATION && buzzerDemo) {
-    // End demo after 5 seconds
+  if (buzzerDemo && (now - buzzerDemoStart >= BUZZER_DEMO_DURATION)) {
     buzzerDemo = false;
-    currentBuzzerPattern = BUZZER_OFF;
-    buzzerStep = 0;
+    stopBuzzer();
+    return;
+  }
+
+  const BuzzerPatternDefinition& pattern = getBuzzerPatternDefinition(currentBuzzerPattern);
+
+  if (pattern.stepCount == 0) {
     noTone(BUZZER_PIN);
     return;
   }
 
-  switch (currentBuzzerPattern) {
-    case BUZZER_OFF:
-      noTone(BUZZER_PIN);
-      break;
-
-    case BUZZER_SINGLE:
-      if (buzzerStep == 0) {
-        tone(BUZZER_PIN, 1000);
-        buzzerLast = now;
-        buzzerStep = 1;
-      } else if (now - buzzerLast >= 120) {
-        noTone(BUZZER_PIN);
-        currentBuzzerPattern = BUZZER_OFF;
-        buzzerStep = 0;
-      }
-      break;
-
-    case BUZZER_CHIRP: {
-      int chirpFreqs[3] = {800, 1200, 800};
-      int duration = 120;
-      if (buzzerStep < 3) {
-        if (now - buzzerLast >= duration + 50 || buzzerStep == 0) {
-          tone(BUZZER_PIN, chirpFreqs[buzzerStep]);
-          buzzerLast = now;
-          buzzerStep++;
-        }
-      } else if (now - buzzerLast >= duration) {
-        noTone(BUZZER_PIN);
-        currentBuzzerPattern = BUZZER_OFF;
-        buzzerStep = 0;
-      }
-      break;
+  if (buzzerStep >= pattern.stepCount) {
+    if (pattern.loops) {
+      buzzerStep = 0;
+      buzzerPlaybackPhase = BUZZER_PHASE_START_NOTE;
+    } else {
+      stopBuzzer();
+      return;
     }
+  }
 
-    case BUZZER_LOOP:
-      if (now - buzzerLast >= BUZZER_INTERVAL) {
+  const BuzzerToneStep& step = pattern.steps[buzzerStep];
+
+  switch (buzzerPlaybackPhase) {
+    case BUZZER_PHASE_START_NOTE:
+      if (step.frequency > 0 && step.durationMs > 0) {
+        tone(BUZZER_PIN, step.frequency);
+        buzzerState = true;
+      } else {
+        noTone(BUZZER_PIN);
+        buzzerState = false;
+      }
+      buzzerLast = now;
+      buzzerPlaybackPhase = BUZZER_PHASE_PLAYING_NOTE;
+      break;
+
+    case BUZZER_PHASE_PLAYING_NOTE:
+      if (now - buzzerLast >= step.durationMs) {
+        noTone(BUZZER_PIN);
+        buzzerState = false;
         buzzerLast = now;
-        buzzerState = !buzzerState;
-        if (buzzerState) tone(BUZZER_PIN, 1000);
-        else noTone(BUZZER_PIN);
+        buzzerPlaybackPhase = BUZZER_PHASE_NOTE_GAP;
       }
       break;
 
-    case BUZZER_SOS: {
-      unsigned int sosDurations[10] = {0,150,150,150,450,450,450,150,150,150};
-      if (buzzerStep < 10) {
-        if (now - buzzerLast >= sosDurations[buzzerStep] + 150) {
-          tone(BUZZER_PIN, 900, sosDurations[buzzerStep]);
-          buzzerLast = now;
-          buzzerStep++;
-        }
-      } else if (now - buzzerLast >= 150) {
-        currentBuzzerPattern = BUZZER_OFF;
-        buzzerStep = 0;
+    case BUZZER_PHASE_NOTE_GAP:
+      if (now - buzzerLast >= step.pauseAfterMs) {
+        ++buzzerStep;
+        buzzerPlaybackPhase = BUZZER_PHASE_START_NOTE;
       }
       break;
-    }
   }
 }
 
