@@ -1,0 +1,24 @@
+// LED pattern template
+// 1) Change the name below
+// 2) Edit the renderer body
+// 3) Run:
+//    .\.venv\Scripts\python.exe scripts\add_led_pattern.py --dry-run
+//    .\.venv\Scripts\python.exe scripts\add_led_pattern.py
+
+name: My New LED Pattern
+
+// Write only the body of:
+//   RGBColor renderYourPattern(unsigned long now)
+//
+// Example idea:
+// const float cycle = (now % 2500UL) / 2500.0f;
+// const float wave = (sin(cycle * TWO_PI) + 1.0f) * 0.5f;
+// const uint8_t blue = static_cast<uint8_t>(40.0f + (wave * 215.0f));
+// const uint8_t green = static_cast<uint8_t>(10.0f + (wave * 90.0f));
+// return makeRGBColor(10, green, blue);
+
+const float cycle = (now % 2000UL) / 2000.0f;
+const float wave = (sin(cycle * TWO_PI) + 1.0f) * 0.5f;
+const uint8_t red = static_cast<uint8_t>(20.0f + (wave * 80.0f));
+const uint8_t blue = static_cast<uint8_t>(40.0f + (wave * 215.0f));
+return makeRGBColor(red, 60, blue);

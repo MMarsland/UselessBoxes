@@ -42,9 +42,6 @@ unsigned long MOTOR_UPDATE_INTERVAL = DEFAULT_MOTOR_UPDATE_INTERVAL; // ms // Ad
 // ------------------------------------------------------------------
 int currentRGBMode = RGB_RAINBOW;
 unsigned long lastRGBAnimation = 0;
-int rainbowPos = 0;
-int breathValue = 0;
-int breathDir = 1;
 
 // Active/Inactive presets (persisted)
 int activeRGBSetting = RGB_RAINBOW;
@@ -75,13 +72,26 @@ namespace {
     return N;
   }
 
-  struct RGBPatternDefinition {
-    const char* name;
+  struct RGBColor {
     uint8_t red;
     uint8_t green;
     uint8_t blue;
-    void (*update)(unsigned long now);
   };
+
+  using RGBPatternRenderer = RGBColor (*)(unsigned long now);
+
+  struct RGBPatternDefinition {
+    const char* name;
+    RGBPatternRenderer render;
+  };
+
+  constexpr RGBColor makeRGBColor(uint8_t red, uint8_t green, uint8_t blue) {
+    return { red, green, blue };
+  }
+
+  constexpr RGBPatternDefinition makeRGBPattern(const char* name, RGBPatternRenderer render) {
+    return { name, render };
+  }
 
   struct BuzzerToneStep {
     uint16_t frequency;
@@ -103,49 +113,60 @@ namespace {
   };
 
   // Add new RGB patterns in one place: extend the enum in the header,
-  // then add one entry here (plus an update callback if it animates).
-  void updateRainbowAnimation(unsigned long now) {
-    if (now - lastRGBAnimation < RGB_UPDATE_INTERVAL) {
-      return;
-    }
-
-    lastRGBAnimation = now;
-    int r = (sin((rainbowPos) * 0.05) * 127) + 128;
-    int g = (sin((rainbowPos * 2) * 0.05) * 127) + 128;
-    int b = (sin((rainbowPos * 3) * 0.05) * 127) + 128;
-    setRGB(r, g, b);
-    ++rainbowPos;
+  // then add a renderer with the shape `RGBColor renderX(unsigned long now)`.
+  // Example:
+  //   RGBColor renderSunset(unsigned long now) { return makeRGBColor(...); }
+  //   makeRGBPattern("SUNSET", renderSunset),
+  RGBColor renderOff(unsigned long /*now*/) {
+    return makeRGBColor(0, 0, 0);
   }
 
-  void updateBreathingAnimation(unsigned long now) {
-    if (now - lastRGBAnimation < RGB_UPDATE_INTERVAL) {
-      return;
-    }
+  RGBColor renderWhite(unsigned long /*now*/) {
+    return makeRGBColor(255, 255, 255);
+  }
 
-    lastRGBAnimation = now;
-    breathValue += breathDir * 2;
+  RGBColor renderSolidRed(unsigned long /*now*/) {
+    return makeRGBColor(255, 0, 0);
+  }
 
-    if (breathValue >= 250) {
-      breathValue = 250;
-      breathDir = -1;
-    }
+  RGBColor renderSolidGreen(unsigned long /*now*/) {
+    return makeRGBColor(0, 255, 0);
+  }
 
-    if (breathValue <= 5) {
-      breathValue = 5;
-      breathDir = 1;
-    }
+  RGBColor renderSolidBlue(unsigned long /*now*/) {
+    return makeRGBColor(0, 0, 255);
+  }
 
-    setRGB(breathValue, breathValue, breathValue);
+  RGBColor renderRainbow(unsigned long now) {
+    const float phase = (now / 18.0f) * 0.05f;
+    const uint8_t r = static_cast<uint8_t>((sin(phase) * 127.0f) + 128.0f);
+    const uint8_t g = static_cast<uint8_t>((sin(phase + (2.0f * PI / 3.0f)) * 127.0f) + 128.0f);
+    const uint8_t b = static_cast<uint8_t>((sin(phase + (4.0f * PI / 3.0f)) * 127.0f) + 128.0f);
+    return makeRGBColor(r, g, b);
+  }
+
+  RGBColor renderBreathing(unsigned long now) {
+    const float cycle = (now % 4000UL) / 4000.0f;
+    const float wave = (sin((cycle * TWO_PI) - (PI / 2.0f)) + 1.0f) * 0.5f;
+    const uint8_t value = static_cast<uint8_t>(5.0f + (wave * 245.0f));
+    return makeRGBColor(value, value, value);
+  }
+
+  RGBColor renderPolice(unsigned long now) {
+    constexpr unsigned long POLICE_FLASH_INTERVAL_MS = 120;
+    const bool showRed = ((now / POLICE_FLASH_INTERVAL_MS) % 2UL) == 0;
+    return showRed ? makeRGBColor(255, 0, 0) : makeRGBColor(0, 0, 255);
   }
 
   const RGBPatternDefinition RGB_PATTERN_DEFINITIONS[] = {
-    { "OFF",       0,   0,   0,   nullptr },
-    { "WHITE",     255, 255, 255, nullptr },
-    { "RAINBOW",   0,   0,   0,   updateRainbowAnimation },
-    { "BREATHING", 0,   0,   0,   updateBreathingAnimation },
-    { "RED",       255, 0,   0,   nullptr },
-    { "GREEN",     0,   255, 0,   nullptr },
-    { "BLUE",      0,   0,   255, nullptr }
+    makeRGBPattern("OFF", renderOff),
+    makeRGBPattern("WHITE", renderWhite),
+    makeRGBPattern("RAINBOW", renderRainbow),
+    makeRGBPattern("BREATHING", renderBreathing),
+    makeRGBPattern("RED", renderSolidRed),
+    makeRGBPattern("GREEN", renderSolidGreen),
+    makeRGBPattern("BLUE", renderSolidBlue),
+    makeRGBPattern("POLICE", renderPolice)
   };
 
   const BuzzerToneStep BUZZER_STEPS_SINGLE[] = {
@@ -168,6 +189,11 @@ namespace {
     { 900, 150, 150 }, { 900, 150, 150 }, { 900, 150, 0 }
   };
 
+  const BuzzerToneStep BUZZER_STEPS_DOUBLE[] = {
+    { 1100, 90, 70 },
+    { 1400, 110, 0 }
+  };
+
   // Add new buzzer patterns in one place: define the step sequence,
   // then add one entry here. Menu labels and playback pick it up automatically.
   const BuzzerPatternDefinition BUZZER_PATTERN_DEFINITIONS[] = {
@@ -175,7 +201,8 @@ namespace {
     { "SINGLE", BUZZER_STEPS_SINGLE, arrayCount(BUZZER_STEPS_SINGLE), false },
     { "CHIRP", BUZZER_STEPS_CHIRP, arrayCount(BUZZER_STEPS_CHIRP), false },
     { "LOOP", BUZZER_STEPS_LOOP, arrayCount(BUZZER_STEPS_LOOP), true },
-    { "SOS", BUZZER_STEPS_SOS, arrayCount(BUZZER_STEPS_SOS), false }
+    { "SOS", BUZZER_STEPS_SOS, arrayCount(BUZZER_STEPS_SOS), false },
+    { "DOUBLE", BUZZER_STEPS_DOUBLE, arrayCount(BUZZER_STEPS_DOUBLE), false }
   };
 
   static_assert(arrayCount(RGB_PATTERN_DEFINITIONS) == RGB_MODE_COUNT,
@@ -760,22 +787,22 @@ void setRGB(uint8_t r, uint8_t g, uint8_t b) {
 }
 
 void applyRGBMode() {
-  const RGBPatternDefinition& pattern = getRGBPatternDefinition(currentRGBMode);
-
-  if (pattern.update == nullptr) {
-    setRGB(pattern.red, pattern.green, pattern.blue);
-    return;
-  }
-
-  pattern.update(millis() + RGB_UPDATE_INTERVAL);
+  const unsigned long now = millis();
+  const RGBColor color = getRGBPatternDefinition(currentRGBMode).render(now);
+  lastRGBAnimation = now;
+  setRGB(color.red, color.green, color.blue);
 }
 
 void updateAnimations() {
-  const RGBPatternDefinition& pattern = getRGBPatternDefinition(currentRGBMode);
+  const unsigned long now = millis();
 
-  if (pattern.update != nullptr) {
-    pattern.update(millis());
+  if (now - lastRGBAnimation < RGB_UPDATE_INTERVAL) {
+    return;
   }
+
+  lastRGBAnimation = now;
+  const RGBColor color = getRGBPatternDefinition(currentRGBMode).render(now);
+  setRGB(color.red, color.green, color.blue);
 }
 
 

@@ -1,0 +1,25 @@
+// Buzzer pattern template
+// Edit the active object below, then run:
+//   .\.venv\Scripts\python.exe scripts\add_buzzer_pattern.py --dry-run
+//   .\.venv\Scripts\python.exe scripts\add_buzzer_pattern.py
+
+/* Example alternative:
+{
+  "name": "Victory Chime",
+  "steps": [
+    { "frequency": 900,  "duration": 100, "pauseDuration": 60 },
+    { "frequency": 1200, "duration": 120, "pauseDuration": 40 },
+    { "frequency": 1500, "duration": 160, "pauseDuration": 0 }
+  ],
+  "loops": false
+}
+*/
+
+{
+  "name": "My New Buzzer Pattern",
+  "steps": [
+    { "frequency": 1000, "duration": 120, "pauseDuration": 50 },
+    { "frequency": 1400, "duration": 120, "pauseDuration": 0 }
+  ],
+  "loops": false
+}

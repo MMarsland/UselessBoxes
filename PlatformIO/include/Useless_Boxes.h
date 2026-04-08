@@ -58,7 +58,8 @@ enum RGBMode {
   RGB_SOLID_RED,
   RGB_SOLID_GREEN,
   RGB_SOLID_BLUE,
-  RGB_MODE_COUNT  // Add new RGB patterns above this line, then register them in `RGB_PATTERN_DEFINITIONS` in `src/Useless_Boxes.cpp`
+  RGB_POLICE,
+  RGB_MODE_COUNT  // Add new RGB patterns above this line, then register a `name + RGBColor render(unsigned long now)` pair in `RGB_PATTERN_DEFINITIONS` in `src/Useless_Boxes.cpp`
 };
 
 // Board on-board status LED not currently configurable — always off
@@ -80,6 +81,7 @@ enum BuzzerPattern {
   BUZZER_CHIRP,
   BUZZER_LOOP,
   BUZZER_SOS,
+  BUZZER_DOUBLE,
   BUZZER_PATTERN_COUNT  // Add new buzzer patterns above this line, then register them in `BUZZER_PATTERN_DEFINITIONS` in `src/Useless_Boxes.cpp`
 };
 
