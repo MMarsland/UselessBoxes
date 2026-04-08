@@ -6,6 +6,57 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+function Get-SemVerParts([string]$Version) {
+    $match = [regex]::Match($Version.Trim(), '^v?(\d+)\.(\d+)\.(\d+)$')
+    if (-not $match.Success) {
+        return $null
+    }
+
+    return @{
+        Major = [int]$match.Groups[1].Value
+        Minor = [int]$match.Groups[2].Value
+        Patch = [int]$match.Groups[3].Value
+    }
+}
+
+function Compare-SemVer([string]$Left, [string]$Right) {
+    $leftParts = Get-SemVerParts $Left
+    $rightParts = Get-SemVerParts $Right
+
+    if (-not $leftParts -or -not $rightParts) {
+        return [string]::Compare($Left, $Right, $true)
+    }
+
+    foreach ($field in @("Major", "Minor", "Patch")) {
+        if ($leftParts[$field] -gt $rightParts[$field]) { return 1 }
+        if ($leftParts[$field] -lt $rightParts[$field]) { return -1 }
+    }
+
+    return 0
+}
+
+function Increment-PatchVersion([string]$Version) {
+    $parts = Get-SemVerParts $Version
+    if (-not $parts) {
+        throw "Version '$Version' is not in v<major>.<minor>.<patch> format."
+    }
+
+    return "v{0}.{1}.{2}" -f $parts.Major, $parts.Minor, ($parts.Patch + 1)
+}
+
+function Get-ManifestVersion([string]$Path) {
+    if (-not (Test-Path $Path)) {
+        return $null
+    }
+
+    $firstLine = Get-Content -Path $Path -TotalCount 1 -ErrorAction SilentlyContinue
+    if (-not $firstLine) {
+        return $null
+    }
+
+    return $firstLine.Trim()
+}
+
 $projectDir = Split-Path -Parent $PSScriptRoot
 $repoRoot = Split-Path -Parent $projectDir
 $sourceFile = Join-Path $projectDir "src\Useless_Boxes.cpp"
@@ -21,6 +72,38 @@ if (-not $versionMatch.Success) {
 }
 
 $version = $versionMatch.Groups[1].Value.Trim()
+
+$manifestPaths = @(
+    (Join-Path $repoRoot "ota\michael.txt"),
+    (Join-Path $repoRoot "ota\trevor.txt")
+)
+$manifestVersions = @($manifestPaths | ForEach-Object { Get-ManifestVersion $_ } | Where-Object { $_ })
+$latestManifestVersion = $null
+foreach ($manifestVersion in $manifestVersions) {
+    if (-not $latestManifestVersion -or (Compare-SemVer $manifestVersion $latestManifestVersion) -gt 0) {
+        $latestManifestVersion = $manifestVersion
+    }
+}
+
+if ($latestManifestVersion -and $version -eq $latestManifestVersion) {
+    $nextVersion = Increment-PatchVersion $version
+    $updatedSourceText = [regex]::Replace(
+        $sourceText,
+        'CURRENT_FW_VERSION\[\]\s*=\s*"([^"]+)"',
+        "CURRENT_FW_VERSION[] = `"$nextVersion`"",
+        1
+    )
+
+    Set-Content -Path $sourceFile -Value $updatedSourceText -Encoding UTF8
+    $sourceText = $updatedSourceText
+    $version = $nextVersion
+    Write-Host "[ota] Auto-bumped CURRENT_FW_VERSION to $version"
+} elseif ($latestManifestVersion) {
+    Write-Host "[ota] CURRENT_FW_VERSION already updated since last run; keeping $version"
+} else {
+    Write-Host "[ota] No prior manifest version found; keeping $version"
+}
+
 Write-Host "[ota] Release version: $version"
 
 $pioPath = Join-Path $env:USERPROFILE ".platformio\penv\Scripts\platformio.exe"
@@ -57,14 +140,14 @@ foreach ($target in $buildTargets) {
 }
 
 if ($CommitManifest) {
-    Write-Host "[ota] Committing manifest files..."
-    git -C $repoRoot add ota/michael.txt ota/trevor.txt
+    Write-Host "[ota] Committing release metadata files..."
+    git -C $repoRoot add PlatformIO/src/Useless_Boxes.cpp ota/michael.txt ota/trevor.txt
 
     $staged = git -C $repoRoot diff --cached --name-only
     if ($staged) {
-        git -C $repoRoot commit -m "Update OTA manifests for $version"
+        git -C $repoRoot commit -m "Prepare OTA release $version"
     } else {
-        Write-Host "[ota] Manifest files unchanged; skipping commit."
+        Write-Host "[ota] Release metadata unchanged; skipping commit."
     }
 
     if ($Push) {
