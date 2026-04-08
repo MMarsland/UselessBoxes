@@ -118,6 +118,7 @@ $buildTargets = @(
 
 $artifactDir = Join-Path $repoRoot "ota\artifacts\$version"
 New-Item -ItemType Directory -Path $artifactDir -Force | Out-Null
+$createdArtifacts = @()
 
 foreach ($target in $buildTargets) {
     $envName = $target.Env
@@ -134,24 +135,51 @@ foreach ($target in $buildTargets) {
         throw "Expected firmware not found: $firmwarePath"
     }
 
-    $artifactPath = Join-Path $artifactDir $outputName
+    $artifactRelativePath = "ota/artifacts/$version/$outputName"
+    $artifactPath = Join-Path $repoRoot $artifactRelativePath
     Copy-Item -Path $firmwarePath -Destination $artifactPath -Force
+    $createdArtifacts += $artifactRelativePath
     Write-Host "[ota] Created artifact: $artifactPath"
 }
 
 if ($CommitManifest) {
-    Write-Host "[ota] Committing release metadata files..."
-    git -C $repoRoot add PlatformIO/src/Useless_Boxes.cpp ota/michael.txt ota/trevor.txt
+    $releasePathsToStage = @(
+        "PlatformIO/src/Useless_Boxes.cpp",
+        "ota/michael.txt",
+        "ota/trevor.txt"
+    ) + $createdArtifacts
+    $releasePathsToStage = $releasePathsToStage | Where-Object { Test-Path (Join-Path $repoRoot $_) }
+
+    Write-Host "[ota] Staging release files after firmware creation..."
+    & git -C $repoRoot add -- $releasePathsToStage
+    if ($LASTEXITCODE -ne 0) {
+        throw "Failed to stage release files."
+    }
 
     $staged = git -C $repoRoot diff --cached --name-only
     if ($staged) {
-        git -C $repoRoot commit -m "Prepare OTA release $version"
+        Write-Host "[ota] Creating commit for $version..."
+        & git -C $repoRoot commit -m "Prepare OTA release $version"
+        if ($LASTEXITCODE -ne 0) {
+            throw "Git commit failed."
+        }
     } else {
-        Write-Host "[ota] Release metadata unchanged; skipping commit."
+        Write-Host "[ota] No release file changes detected; skipping commit."
     }
 
     if ($Push) {
-        git -C $repoRoot push
+        $currentBranch = (git -C $repoRoot branch --show-current).Trim()
+        if (-not $currentBranch) {
+            throw "Could not determine current git branch for push."
+        }
+
+        Write-Host "[ota] Pushing to origin/$currentBranch..."
+        & git -C $repoRoot push --set-upstream origin $currentBranch
+        if ($LASTEXITCODE -ne 0) {
+            throw "Git push failed."
+        }
+
+        Write-Host "[ota] Push complete."
     }
 }
 
